@@ -1,24 +1,28 @@
-// Load values such as MONGODB_URI and PORT from the .env file.
+// Load environment variables such as MONGODB_URI and PORT from the local .env file.
+// This keeps database credentials and runtime config out of the source code.
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
 
 // Create the Express application and choose the port to listen on.
+// PORT defaults to 5000 so the app can still run locally when no environment variable is set.
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Parse JSON request bodies so routes can read values from req.body.
+// JSON middleware converts incoming request bodies into JavaScript objects.
+// Without this, req.body would be undefined for POST and PUT requests.
 app.use(express.json());
 
-// Show the users webpage when someone visits the server's home address.
+// Serve the browser page from the root URL so a user can view all saved users in the table.
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// A schema describes which fields each user document must contain.
-// MongoDB adds createdAt and updatedAt automatically because timestamps is enabled.
-// The unique option prevents MongoDB from storing duplicate email values.
+// A Mongoose schema defines the structure of each user document in MongoDB.
+// It also enforces validation rules such as required fields and numeric ID constraints.
+// The timestamps option automatically adds createdAt and updatedAt to every document.
+// The unique option prevents duplicate email addresses from being stored.
 const userSchema = new mongoose.Schema({
   userId: {
     type: Number,
@@ -44,10 +48,12 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// The User model lets routes create, find, update, and delete user documents.
+// The User model is the MongoDB collection interface we use in all route handlers.
+// It exposes methods such as find(), findOne(), create(), updateOne(), and deleteOne().
 const User = mongoose.model('User', userSchema);
 
-// This counter safely assigns a different sequential ID to each new user.
+// This counter table keeps track of the next available user ID.
+// Using a separate counter avoids collisions when multiple users are created quickly.
 const counterSchema = new mongoose.Schema({
   _id: String,
   sequence: { type: Number, required: true }
@@ -56,6 +62,8 @@ const Counter = mongoose.model('Counter', counterSchema);
 
 let databaseReady = false;
 
+// This helper creates a new five-digit user ID by incrementing the shared counter.
+// The sequence is stored in MongoDB so the ID is unique even if the server restarts.
 async function nextUserId() {
   const counter = await Counter.findOneAndUpdate(
     { _id: 'users' },
@@ -63,6 +71,7 @@ async function nextUserId() {
     { new: true }
   );
 
+  // Once the sequence reaches 100000, no more valid IDs are available in the five-digit range.
   if (!counter || counter.sequence > 99999) {
     const error = new Error('All five-digit user IDs have been used.');
     error.code = 'USER_IDS_EXHAUSTED';
@@ -72,6 +81,8 @@ async function nextUserId() {
   return counter.sequence;
 }
 
+// When the app starts, it must ensure that the database has every required index and counter value.
+// This prevents duplicate user IDs and keeps legacy records compatible with the public API format.
 async function initializeUserIds() {
   await User.init(); // Create the unique indexes before assigning public IDs.
 
@@ -81,14 +92,14 @@ async function initializeUserIds() {
     .lean();
   const startingSequence = Math.max(9999, highestAssignedUser?.userId || 9999);
 
-  // Keep the counter at least as high as IDs already stored in the database.
+  // Keep the counter at least as high as the IDs already stored in MongoDB.
   await Counter.updateOne(
     { _id: 'users' },
     { $max: { sequence: startingSequence } },
     { upsert: true }
   );
 
-  // Give existing users an ID too, so every API response uses the same format.
+  // Any older records without a userId are backfilled so the whole API always returns the same shape.
   const usersWithoutId = await User.find({ userId: { $exists: false } })
     .select('_id')
     .lean();
@@ -101,7 +112,8 @@ async function initializeUserIds() {
   }
 }
 
-// Keep API requests unavailable until MongoDB and the user ID counter are ready.
+// Block API routes until MongoDB is connected and the ID counter has been initialized.
+// This avoids race conditions where requests hit the database before the app is ready.
 app.use('/api', (req, res, next) => {
   if (!databaseReady) {
     return res.status(503).json({ error: 'The database is not ready yet.' });
@@ -109,7 +121,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Connect to MongoDB, prepare five-digit IDs, then allow API requests.
+// Connect to MongoDB, initialize the ID sequence, and then unlock the API.
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     await initializeUserIds();
@@ -118,7 +130,8 @@ mongoose.connect(process.env.MONGODB_URI)
   })
   .catch((err) => console.error('MongoDB initialization error:', err));
 
-// POST /api/users: create a user from the JSON body sent by the client.
+// POST /api/users creates a new user from the JSON body that the browser or client sends.
+// The route validates input, assigns a unique five-digit ID, and stores the document in MongoDB.
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email } = req.body;
@@ -143,7 +156,8 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// GET /api/users: return every user as a JSON array.
+// GET /api/users returns the complete list of users in JSON format.
+// The frontend uses this endpoint to render the table on the main page.
 app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find();
@@ -153,7 +167,8 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// GET /api/users/:id: find and return one user using its five-digit ID.
+// GET /api/users/:id fetches one document by its five-digit public ID.
+// The regex makes sure the URL uses exactly five numeric characters before querying MongoDB.
 app.get('/api/users/:id', async (req, res) => {
   if (!/^\d{5}$/.test(req.params.id)) {
     return res.status(400).json({ error: 'User ID must be exactly five digits.' });
@@ -171,7 +186,8 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// PUT /api/users/:id: update a user's name and email from the JSON body.
+// PUT /api/users/:id updates the selected user with new name and email values.
+// runValidators ensures the schema rules are checked before the update is saved.
 app.put('/api/users/:id', async (req, res) => {
   if (!/^\d{5}$/.test(req.params.id)) {
     return res.status(400).json({ error: 'User ID must be exactly five digits.' });
@@ -198,7 +214,8 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id: remove a user using its five-digit ID.
+// DELETE /api/users/:id removes a single user record from MongoDB.
+// The response returns a short confirmation message plus the deleted user data for debugging or UI use.
 app.delete('/api/users/:id', async (req, res) => {
   if (!/^\d{5}$/.test(req.params.id)) {
     return res.status(400).json({ error: 'User ID must be exactly five digits.' });
@@ -215,7 +232,8 @@ app.delete('/api/users/:id', async (req, res) => {
   }
 });
 
-// Start accepting HTTP requests after all routes have been registered.
+// Start accepting HTTP requests after all routes have been defined.
+// Express will then listen for incoming browser and API calls on the configured port.
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
