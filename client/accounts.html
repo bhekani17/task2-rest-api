@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | Accounts</title>
+    <link rel="icon" type="image/png" href="/images/bg.png">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <img class="brand-logo" src="/images/bg.png" alt="Sky Bank">
+            </div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <div class="nav-group">
+                    <span class="nav-section-title">Workspace</span>
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Banking</span>
+                    <a class="nav-link active" href="/accounts" aria-current="page">Accounts</a>
+                    <a class="nav-link" href="/transfers">Transfers</a>
+                    <a class="nav-link" href="/transactions">Transactions</a>
+                </div>
+                <div id="adminNavigationGroup" class="nav-group" hidden>
+                    <span class="nav-section-title">Administration</span>
+                    <a class="nav-link" href="/create">Open Account</a>
+                </div>
+                <button id="logoutButton" class="nav-link" type="button">Sign out</button>
+            </nav>
+        </aside>
+        <main class="main single-page">
+            <header class="topbar">
+                <h1 class="page-title">Accounts</h1>
+                <div class="top-actions">
+                    <p id="status" role="status" aria-live="polite"></p>
+                    <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
+                </div>
+            </header>
+            <section class="stats">
+                <article class="stat-card">
+                    <div class="stat-label">Accounts</div>
+                    <div id="totalAccounts" class="stat-value">0</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-label">Total balance</div>
+                    <div id="totalBalance" class="stat-value">R 0.00</div>
+                </article>
+            </section>
+            <section id="accountsSection" class="panel-card single-panel" aria-labelledby="accountsHeading">
+                <div class="dashboard-header">
+                    <div>
+                        <h2 id="accountsHeading">Your accounts</h2>
+                        <p class="panel-description">Review balances and open additional accounts.</p>
+                    </div>
+                </div>
+                <div id="accounts" class="account-list"></div>
+                <form id="openAccountForm" class="transaction-form account-open-form">
+                    <label for="newAccountType">Account type
+                        <select id="newAccountType" name="accountType" required>
+                            <option value="savings">Savings</option>
+                            <option value="cheque">Cheque/current</option>
+                        </select>
+                    </label>
+                    <button type="submit">Open account</button>
+                </form>
+                <p id="savingsInterestPolicy" class="filter-status">Demo savings interest: 12% per year, credited monthly at 1% per cycle.</p>
+                <p id="accountLimitMessage" class="filter-status"></p>
+                <p id="accountCreationStatus" class="filter-status" role="status" aria-live="polite"></p>
+            </section>
+        </main>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>

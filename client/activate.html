@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | Activate Account</title>
+    <link rel="icon" type="image/jpeg" href="/images/bg.png">
+    <link rel="stylesheet" href="/css/activate.css">
+</head>
+<body>
+    <main>
+        <img src="/images/bg.png" alt="Sky Bank">
+        <h1>Activate your account</h1>
+        <p>Choose a password to finish setting up your account.</p>
+        <form id="activationForm">
+            <label for="password">Password
+                <input id="password" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+            </label>
+            <button type="submit">Activate account</button>
+        </form>
+        <p id="message" role="status" aria-live="polite"></p>
+        <a href="/login">Return to sign in</a>
+    </main>
+    <script src="/js/activate.js"></script>
+</body>
+</html>

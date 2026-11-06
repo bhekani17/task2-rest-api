@@ -1,10 +1,14 @@
 {
   "name": "task2-rest-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Sky Bank account and transaction application foundation",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "repository": {
     "type": "git",
@@ -18,9 +22,12 @@
   },
   "homepage": "https://github.com/bhekani17/task2-rest-api#readme",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.2",
     "mongodb": "^7.8.0",
-    "mongoose": "^9.11.4"
+    "mongoose": "^9.11.4",
+    "socket.io": "^4.8.1"
   }
 }

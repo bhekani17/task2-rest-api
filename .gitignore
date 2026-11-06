@@ -1,0 +1,6 @@
+node_modules/
+endpoints/
+env/
+.env
+.env.*
+!.env.example

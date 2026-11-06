@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | Open Account</title>
+    <link rel="icon" type="image/jpeg" href="/images/bg.png">
+    <link rel="stylesheet" href="/admin/css/create.css">
+</head>
+<body>
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <img class="brand-logo" src="/images/bg.png" alt="Sky Bank">
+            </div>
+
+            <nav class="sidebar-nav">
+                <a class="nav-link" href="/dashboard">Dashboard</a>
+                <a class="nav-link" href="/accounts">Accounts</a>
+                <a class="nav-link" href="/transfers">Transfers</a>
+                <a class="nav-link" href="/transactions">Transactions</a>
+                <a class="nav-link active" href="/create">Open Account</a>
+                <a class="nav-link" href="/login">Login</a>
+                <a class="nav-link" href="/register">Register</a>
+            </nav>
+        </aside>
+
+        <main class="main">
+            <div class="panel">
+                <div class="topbar">
+                    <h1>Create customer account</h1>
+                    <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
+                </div>
+
+                <form id="userForm">
+                    <div class="field">
+                        <label for="name">Name</label>
+                        <input id="name" name="name" type="text" placeholder="Enter full name" required>
+                    </div>
+
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input id="email" name="email" type="email" placeholder="Enter email" required>
+                    </div>
+
+                    <button type="submit">Create customer account</button>
+                </form>
+
+                <label id="activationLinkField" class="field" for="activationLink" hidden>
+                    Customer activation link (expires in 24 hours)
+                    <input id="activationLink" type="text" readonly>
+                </label>
+                <p id="message" role="status" aria-live="polite"></p>
+            </div>
+        </main>
+    </div>
+    <script src="/admin/js/create.js"></script>
+</body>
+</html>

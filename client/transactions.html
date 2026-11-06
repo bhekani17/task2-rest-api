@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | Transactions</title>
+    <link rel="icon" type="image/png" href="/images/bg.png">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <img class="brand-logo" src="/images/bg.png" alt="Sky Bank">
+            </div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <div class="nav-group">
+                    <span class="nav-section-title">Workspace</span>
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Banking</span>
+                    <a class="nav-link" href="/accounts">Accounts</a>
+                    <a class="nav-link" href="/transfers">Transfers</a>
+                    <a class="nav-link active" href="/transactions" aria-current="page">Transactions</a>
+                </div>
+                <div id="adminNavigationGroup" class="nav-group" hidden>
+                    <span class="nav-section-title">Administration</span>
+                    <a class="nav-link" href="/create">Open Account</a>
+                </div>
+                <button id="logoutButton" class="nav-link" type="button">Sign out</button>
+            </nav>
+        </aside>
+        <main class="main single-page">
+            <header class="topbar">
+                <h1 class="page-title">Transactions</h1>
+                <div class="top-actions">
+                    <p id="status" role="status" aria-live="polite"></p>
+                    <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
+                </div>
+            </header>
+            <section class="stats">
+                <article class="stat-card">
+                    <div class="stat-label">Accounts</div>
+                    <div id="totalAccounts" class="stat-value">0</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-label">Total balance</div>
+                    <div id="totalBalance" class="stat-value">R 0.00</div>
+                </article>
+                <article class="stat-card">
+                    <div class="stat-label">Matching transactions</div>
+                    <div id="totalTransactions" class="stat-value">0</div>
+                </article>
+            </section>
+            <section id="activitySection" class="panel-card single-panel" aria-labelledby="activityHeading">
+                <div class="transaction-toolbar">
+                    <div>
+                        <h2 id="activityHeading">Account activity</h2>
+                        <p class="panel-description">Search, filter, and export your transaction history.</p>
+                    </div>
+                    <button id="downloadStatement" class="statement-button" type="button">Download CSV</button>
+                </div>
+                <form id="transactionFilterForm" class="filter-form">
+                    <label for="filterFrom">From (UTC)
+                        <input id="filterFrom" name="from" type="date">
+                    </label>
+                    <label for="filterTo">To (UTC)
+                        <input id="filterTo" name="to" type="date">
+                    </label>
+                    <label for="filterType">Type
+                        <select id="filterType" name="type">
+                            <option value="">All types</option>
+                            <option value="transfer">Transfer</option>
+                            <option value="deposit">Deposit</option>
+                            <option value="withdrawal">Withdrawal</option>
+                            <option value="interest">Interest</option>
+                        </select>
+                    </label>
+                    <label for="filterAccount">Account
+                        <select id="filterAccount" name="accountNumber">
+                            <option value="">All accounts</option>
+                        </select>
+                    </label>
+                    <div class="filter-actions">
+                        <button class="filter-button filter-button-primary" type="submit">Apply filters</button>
+                        <button id="clearFilters" class="filter-button" type="button">Clear</button>
+                    </div>
+                </form>
+                <p id="transactionFilterStatus" class="filter-status" role="status" aria-live="polite"></p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions"></tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <button id="previousPage" class="page-button" type="button" disabled>Previous</button>
+                    <span id="paginationLabel" class="pagination-label">Page 1</span>
+                    <button id="nextPage" class="page-button" type="button" disabled>Next</button>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>

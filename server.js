@@ -2,238 +2,232 @@
 // This keeps database credentials and runtime config out of the source code.
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
 const mongoose = require('mongoose');
 const path = require('path');
+const crypto = require('crypto');
+const { Server: SocketIOServer } = require('socket.io');
+const { hashPassword, verifyPassword, needsPasswordRehash } = require('./lib/passwords');
+const { createSessionService } = require('./lib/session');
+const { createAuthMiddleware } = require('./middleware/auth');
+const { createApiReadinessMiddleware } = require('./middleware/api-readiness');
+const { reportServerError, publicUser } = require('./lib/http');
+const {
+  MAX_ACCOUNTS_PER_USER, User, Account, Session, LoginAttempt, Activation,
+  Transaction, Counter
+} = require('./models');
 
 // Create the Express application and choose the port to listen on.
 // PORT defaults to 5000 so the app can still run locally when no environment variable is set.
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// JSON middleware converts incoming request bodies into JavaScript objects.
-// Without this, req.body would be undefined for POST and PUT requests.
-app.use(express.json());
-
-// Serve the browser page from the root URL so a user can view all saved users in the table.
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// A Mongoose schema defines the structure of each user document in MongoDB.
-// It also enforces validation rules such as required fields and numeric ID constraints.
-// The timestamps option automatically adds createdAt and updatedAt to every document.
-// The unique option prevents duplicate email addresses from being stored.
-const userSchema = new mongoose.Schema({
-  userId: {
-    type: Number,
-    required: true,
-    min: 10000,
-    max: 99999,
-    validate: Number.isInteger,
-    unique: true,
-    sparse: true
-  },
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true }
-}, {
-  timestamps: true,
-  toJSON: {
-    transform: (document, result) => {
-      result.id = result.userId;
-      delete result.userId;
-      delete result._id;
-      delete result.__v;
-      return result;
-    }
-  }
-});
-
-// The User model is the MongoDB collection interface we use in all route handlers.
-// It exposes methods such as find(), findOne(), create(), updateOne(), and deleteOne().
-const User = mongoose.model('User', userSchema);
-
-// This counter table keeps track of the next available user ID.
-// Using a separate counter avoids collisions when multiple users are created quickly.
-const counterSchema = new mongoose.Schema({
-  _id: String,
-  sequence: { type: Number, required: true }
-});
-const Counter = mongoose.model('Counter', counterSchema);
-
+const JWT_SECRET = process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === 'production' ? null : crypto.randomBytes(32).toString('hex'));
+const SESSION_COOKIE = 'skybank_session';
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const SESSION_ISSUER = 'sky-bank';
+const SYSTEM_ACTOR_USER_ID = new mongoose.Types.ObjectId('000000000000000000000000');
 let databaseReady = false;
 
-// This helper creates a new five-digit user ID by incrementing the shared counter.
-// The sequence is stored in MongoDB so the ID is unique even if the server restarts.
-async function nextUserId() {
-  const counter = await Counter.findOneAndUpdate(
-    { _id: 'users' },
-    { $inc: { sequence: 1 } },
-    { new: true }
-  );
-
-  // Once the sequence reaches 100000, no more valid IDs are available in the five-digit range.
-  if (!counter || counter.sequence > 99999) {
-    const error = new Error('All five-digit user IDs have been used.');
-    error.code = 'USER_IDS_EXHAUSTED';
-    throw error;
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
-
-  return counter.sequence;
-}
-
-// When the app starts, it must ensure that the database has every required index and counter value.
-// This prevents duplicate user IDs and keeps legacy records compatible with the public API format.
-async function initializeUserIds() {
-  await User.init(); // Create the unique indexes before assigning public IDs.
-
-  const highestAssignedUser = await User.findOne({ userId: { $exists: true } })
-    .sort({ userId: -1 })
-    .select('userId')
-    .lean();
-  const startingSequence = Math.max(9999, highestAssignedUser?.userId || 9999);
-
-  // Keep the counter at least as high as the IDs already stored in MongoDB.
-  await Counter.updateOne(
-    { _id: 'users' },
-    { $max: { sequence: startingSequence } },
-    { upsert: true }
-  );
-
-  // Any older records without a userId are backfilled so the whole API always returns the same shape.
-  const usersWithoutId = await User.find({ userId: { $exists: false } })
-    .select('_id')
-    .lean();
-  for (const user of usersWithoutId) {
-    const userId = await nextUserId();
-    await User.updateOne(
-      { _id: user._id, userId: { $exists: false } },
-      { $set: { userId } }
-    );
-  }
-}
-
-// Block API routes until MongoDB is connected and the ID counter has been initialized.
-// This avoids race conditions where requests hit the database before the app is ready.
-app.use('/api', (req, res, next) => {
-  if (!databaseReady) {
-    return res.status(503).json({ error: 'The database is not ready yet.' });
-  }
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
 });
+app.use(express.json({ limit: '16kb' }));
+app.use('/css', express.static(path.join(__dirname, 'client', 'css'), { index: false }));
+app.use('/js', express.static(path.join(__dirname, 'client', 'js'), { index: false }));
+app.use('/admin/css', express.static(path.join(__dirname, 'admin', 'css'), { index: false }));
+app.use('/admin/js', express.static(path.join(__dirname, 'admin', 'js'), { index: false }));
 
-// Connect to MongoDB, initialize the ID sequence, and then unlock the API.
-mongoose.connect(process.env.MONGODB_URI)
-  .then(async () => {
-    await initializeUserIds();
-    databaseReady = true;
-    console.log('Connected to MongoDB Atlas successfully!');
-  })
-  .catch((err) => console.error('MongoDB initialization error:', err));
+const sessionService = createSessionService({
+  Session,
+  secret: JWT_SECRET,
+  cookieName: SESSION_COOKIE,
+  durationMs: SESSION_DURATION_MS,
+  issuer: SESSION_ISSUER,
+  production: process.env.NODE_ENV === 'production'
+});
+const {
+  hashToken, readCookie, clearSessionCookie, setSessionCookie, loadSessionUser
+} = sessionService;
+const {
+  requirePageAuth, requirePageAdmin, requireAuth, requireAdmin
+} = createAuthMiddleware({
+  loadSessionUser,
+  clearSessionCookie,
+  isDatabaseReady: () => databaseReady
+});
 
-// POST /api/users creates a new user from the JSON body that the browser or client sends.
-// The route validates input, assigns a unique five-digit ID, and stores the document in MongoDB.
-app.post('/api/users', async (req, res) => {
+const httpServer = http.createServer(app);
+const io = new SocketIOServer(httpServer, { maxHttpBufferSize: 10_000 });
+
+io.use(async (socket, next) => {
   try {
-    const { name, email } = req.body;
-    if (!name || !email) {
-      // 400 means the client did not provide all required fields.
-      return res.status(400).json({ error: 'Name and email are required.' });
+    const origin = socket.request.headers.origin;
+    if (origin && new URL(origin).host !== socket.request.headers.host) {
+      return next(new Error('Invalid origin.'));
     }
-
-    const userId = await nextUserId();
-    const newUser = new User({ userId, name, email });
-    await newUser.save(); // Save the new document to MongoDB.
-    res.status(201).json(newUser); // 201 means a resource was created.
+    const user = await loadSessionUser(socket.request);
+    if (!user) return next(new Error('Authentication required.'));
+    socket.data.userId = String(user._id);
+    next();
   } catch (error) {
-    if (error.code === 'USER_IDS_EXHAUSTED') {
-      return res.status(503).json({ error: error.message });
-    }
-    if (error.code === 11000) {
-      return res.status(409).json({ error: 'A user with this email already exists.' });
-    }
-    // Send an error response if validation or the database operation fails.
-    res.status(500).json({ error: error.message });
+    next(error);
   }
 });
 
-// GET /api/users returns the complete list of users in JSON format.
-// The frontend uses this endpoint to render the table on the main page.
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await User.find();
-    res.status(200).json(users);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+io.on('connection', (socket) => {
+  socket.join(`user:${socket.data.userId}`);
 });
 
-// GET /api/users/:id fetches one document by its five-digit public ID.
-// The regex makes sure the URL uses exactly five numeric characters before querying MongoDB.
-app.get('/api/users/:id', async (req, res) => {
-  if (!/^\d{5}$/.test(req.params.id)) {
-    return res.status(400).json({ error: 'User ID must be exactly five digits.' });
-  }
+async function incrementAuthAttempts(req, scope) {
+  const now = new Date();
+  return LoginAttempt.findOneAndUpdate(
+    { _id: hashToken(`${scope}:${req.ip || 'unknown'}`) },
+    [{
+      $set: {
+        count: {
+          $cond: [
+            { $gt: ['$expiresAt', now] },
+            { $add: [{ $ifNull: ['$count', 0] }, 1] },
+            1
+          ]
+        },
+        expiresAt: {
+          $cond: [
+            { $gt: ['$expiresAt', now] },
+            '$expiresAt',
+            new Date(Date.now() + LOGIN_ATTEMPT_WINDOW_MS)
+          ]
+        }
+      }
+    }],
+    { upsert: true, new: true, updatePipeline: true }
+  );
+}
 
-  try {
-    const user = await User.findOne({ userId: Number(req.params.id) });
-    if (!user) {
-      // 404 means the requested ID does not match a saved user.
-      return res.status(404).json({ error: 'User not found.' });
-    }
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+function clearAuthAttempts(req, scope) {
+  return LoginAttempt.deleteOne({
+    _id: hashToken(`${scope}:${req.ip || 'unknown'}`)
+  });
+}
+
+const { createAccountService } = require('./services/account-service');
+
+const accountService = createAccountService({
+  User, Account, Counter, Transaction, Session, LoginAttempt, Activation,
+  mongoose, io, SYSTEM_ACTOR_USER_ID,
+  MAX_ACCOUNTS_PER_USER
+});
+const {
+  nextUserId, nextAccountNumber, initializeUserIds, accountLimitReached,
+  currentMonthKey, previousMonthKey, nextMonthKey, monthlySavingsInterestMinor,
+  ownedAccountNumbers, creditMonthlySavingsInterest
+} = accountService;
+
+const { parseAmountMinor, transactionResponse, buildTransactionFilter, parseTransactionPagination, transactionCsv } = require('./services/transaction-service');
+const { registerAuthRoutes } = require('./routes/auth');
+const { registerAccountRoutes } = require('./routes/accounts');
+const { registerTransactionRoutes } = require('./routes/transactions');
+const { registerAdminRoutes } = require('./routes/admin');
+const { registerPageRoutes } = require('./routes/pages');
+
+registerPageRoutes(app, {
+  loadSessionUser,
+  readCookie,
+  clearSessionCookie,
+  requirePageAuth,
+  requirePageAdmin,
+  isDatabaseReady: () => databaseReady,
+  rootDirectory: __dirname,
+  SESSION_COOKIE
+});
+app.use('/api', createApiReadinessMiddleware({ isDatabaseReady: () => databaseReady }));
+
+registerAuthRoutes(app, {
+  requireAuth, requireAdmin, User, Account, Session, Activation,
+  incrementAuthAttempts, clearAuthAttempts, nextUserId, nextAccountNumber,
+  currentMonthKey, hashToken, readCookie, clearSessionCookie, setSessionCookie,
+  publicUser, reportServerError, hashPassword, verifyPassword, needsPasswordRehash,
+  mongoose, LOGIN_ATTEMPT_WINDOW_MS, SESSION_COOKIE
+});
+registerAccountRoutes(app, {
+  requireAdmin, User, Account, publicUser, reportServerError, currentMonthKey,
+  nextAccountNumber, MAX_ACCOUNTS_PER_USER, accountLimitReached
+});
+registerTransactionRoutes(app, {
+  User, Account, Transaction, reportServerError, mongoose, io,
+  ownedAccountNumbers, buildTransactionFilter, transactionCsv,
+  parseTransactionPagination, transactionResponse, parseAmountMinor
+});
+registerAdminRoutes(app, {
+  requireAdmin, User, Account, Session, publicUser, reportServerError
 });
 
-// PUT /api/users/:id updates the selected user with new name and email values.
-// runValidators ensures the schema rules are checked before the update is saved.
-app.put('/api/users/:id', async (req, res) => {
-  if (!/^\d{5}$/.test(req.params.id)) {
-    return res.status(400).json({ error: 'User ID must be exactly five digits.' });
-  }
-
-  try {
-    const { name, email } = req.body;
-    const updatedUser = await User.findOneAndUpdate(
-      { userId: Number(req.params.id) },
-      { name, email },
-      { new: true, runValidators: true } // Return the updated user and check schema rules.
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-
-    res.status(200).json(updatedUser);
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({ error: 'A user with this email already exists.' });
-    }
-    res.status(500).json({ error: error.message });
-  }
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  reportServerError(res, 'Request', error);
 });
 
-// DELETE /api/users/:id removes a single user record from MongoDB.
-// The response returns a short confirmation message plus the deleted user data for debugging or UI use.
-app.delete('/api/users/:id', async (req, res) => {
-  if (!/^\d{5}$/.test(req.params.id)) {
-    return res.status(400).json({ error: 'User ID must be exactly five digits.' });
+async function startServer() {
+  if (process.env.NODE_ENV === 'production' && (!JWT_SECRET || JWT_SECRET.length < 32)) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters in production.');
   }
-
-  try {
-    const deletedUser = await User.findOneAndDelete({ userId: Number(req.params.id) });
-    if (!deletedUser) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-    res.status(200).json({ message: 'User deleted successfully.', user: deletedUser });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGODB_URI must be configured before starting the server.');
   }
-});
+  await mongoose.connect(process.env.MONGODB_URI);
+  await initializeUserIds();
+  databaseReady = true;
+  const interestTimer = setInterval(() => {
+    creditMonthlySavingsInterest().catch((error) => {
+      const detail = typeof error?.message === 'string'
+        ? error.message.replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]').slice(0, 300)
+        : '';
+      console.error(`Monthly savings interest failed: ${error?.name || 'Error'}${detail ? `: ${detail}` : ''}`);
+    });
+  }, 60 * 60 * 1000);
+  interestTimer.unref();
+  creditMonthlySavingsInterest().catch((error) => {
+    const detail = typeof error?.message === 'string'
+      ? error.message.replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]').slice(0, 300)
+      : '';
+    console.error(`Monthly savings interest failed: ${error?.name || 'Error'}${detail ? `: ${detail}` : ''}`);
+  });
+  return httpServer.listen(PORT, () => {
+    console.log(`Sky Bank server running on port ${PORT}.`);
+  });
+}
 
-// Start accepting HTTP requests after all routes have been defined.
-// Express will then listen for incoming browser and API calls on the configured port.
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error(`Server startup failed: ${error?.name || 'Error'}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  app,
+  io,
+  startServer,
+  parseAmountMinor,
+  currentMonthKey,
+  nextMonthKey,
+  previousMonthKey,
+  MAX_ACCOUNTS_PER_USER,
+  accountLimitReached,
+  monthlySavingsInterestMinor,
+  transactionResponse,
+  buildTransactionFilter,
+  parseTransactionPagination,
+  transactionCsv
+};
