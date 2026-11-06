@@ -14,7 +14,7 @@ const { createApiReadinessMiddleware } = require('./middleware/api-readiness');
 const { reportServerError, publicUser } = require('./lib/http');
 const {
   MAX_ACCOUNTS_PER_USER, User, Account, Session, LoginAttempt, Activation,
-  Transaction, Counter
+  Transaction, Counter, StockPortfolio, StockTrade
 } = require('./models');
 
 // Create the Express application and choose the port to listen on.
@@ -125,6 +125,7 @@ const { createAccountService } = require('./services/account-service');
 
 const accountService = createAccountService({
   User, Account, Counter, Transaction, Session, LoginAttempt, Activation,
+  StockPortfolio, StockTrade,
   mongoose, io, SYSTEM_ACTOR_USER_ID,
   MAX_ACCOUNTS_PER_USER
 });
@@ -140,6 +141,7 @@ const { registerAccountRoutes } = require('./routes/accounts');
 const { registerTransactionRoutes } = require('./routes/transactions');
 const { registerAdminRoutes } = require('./routes/admin');
 const { registerPageRoutes } = require('./routes/pages');
+const { registerInvestmentRoutes } = require('./routes/investments');
 
 registerPageRoutes(app, {
   loadSessionUser,
@@ -169,8 +171,11 @@ registerTransactionRoutes(app, {
   ownedAccountNumbers, buildTransactionFilter, transactionCsv,
   parseTransactionPagination, transactionResponse, parseAmountMinor
 });
+registerInvestmentRoutes(app, {
+  User, Account, Transaction, StockPortfolio, StockTrade, mongoose, reportServerError
+});
 registerAdminRoutes(app, {
-  requireAdmin, User, Account, Session, publicUser, reportServerError
+  requireAdmin, User, Account, Session, Transaction, mongoose, publicUser, reportServerError
 });
 
 app.use((error, req, res, next) => {

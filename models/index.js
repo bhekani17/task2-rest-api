@@ -20,6 +20,8 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, select: false },
   passwordHash: { type: String, select: false },
+  profilePhoto: { type: Buffer, select: false },
+  profilePhotoContentType: { type: String, enum: ['image/jpeg', 'image/png', 'image/webp'], default: null },
   role: { type: String, enum: ['customer', 'admin'], default: 'customer', required: true },
   status: { type: String, enum: ['pending', 'active', 'closed'], default: 'active', required: true },
   accountNumber: { type: String, unique: true, sparse: true },
@@ -81,7 +83,7 @@ const Activation = mongoose.model('Activation', activationSchema);
 
 // Store every money movement as a ledger entry; balances are stored as integer cents.
 const transactionSchema = new mongoose.Schema({
-  type: { type: String, enum: ['deposit', 'withdrawal', 'transfer', 'interest'], required: true },
+  type: { type: String, enum: ['deposit', 'withdrawal', 'transfer', 'interest', 'stock_buy', 'stock_sell'], required: true },
   actorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   idempotencyKey: { type: String, required: true },
   requestFingerprint: { type: String, required: true },
@@ -106,6 +108,35 @@ const counterSchema = new mongoose.Schema({
 });
 const Counter = mongoose.model('Counter', counterSchema);
 
+const stockPortfolioSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+  portfolioType: { type: String, enum: ['bank-funded'], required: true, default: 'bank-funded' },
+  // Retained only to detect and remove virtual-cash portfolios created by the old simulator.
+  virtualCashMinor: { type: Number, min: 0, validate: Number.isSafeInteger, default: undefined },
+  holdings: [{
+    _id: false,
+    ticker: { type: String, required: true },
+    shares: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+    averageCostMinor: { type: Number, required: true, min: 1, validate: Number.isSafeInteger }
+  }]
+}, { timestamps: true });
+const StockPortfolio = mongoose.model('StockPortfolio', stockPortfolioSchema);
+
+const stockTradeSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  accountNumber: { type: String, required: true },
+  idempotencyKey: { type: String, required: true },
+  requestFingerprint: { type: String, required: true },
+  ticker: { type: String, required: true },
+  side: { type: String, enum: ['buy', 'sell'], required: true },
+  shares: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  priceMinor: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  totalMinor: { type: Number, required: true, min: 1, validate: Number.isSafeInteger }
+}, { timestamps: true });
+stockTradeSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
+stockTradeSchema.index({ userId: 1, createdAt: -1 });
+const StockTrade = mongoose.model('StockTrade', stockTradeSchema);
+
 module.exports = {
   MAX_ACCOUNTS_PER_USER,
   User,
@@ -114,5 +145,7 @@ module.exports = {
   LoginAttempt,
   Activation,
   Transaction,
-  Counter
+  Counter,
+  StockPortfolio,
+  StockTrade
 };

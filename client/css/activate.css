@@ -52,3 +52,45 @@
             body { padding: 12px; }
             main { padding: 24px 18px; }
         }
+
+        :root {
+            color-scheme: light;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #172a3a;
+            background: #f3f6f9;
+        }
+        body {
+            background:
+                radial-gradient(circle at 12% 10%, rgba(8, 127, 117, .09), transparent 28rem),
+                #f3f6f9;
+            line-height: 1.5;
+        }
+        main {
+            border-color: #dce5ea;
+            border-radius: 18px;
+            box-shadow: 0 16px 38px rgba(17, 42, 59, .10);
+        }
+        h1 { color: #172a3a; letter-spacing: -.035em; }
+        p { color: #647789; }
+        input, button {
+            min-height: 46px;
+            border-color: #dce5ea;
+            border-radius: 10px;
+            font: inherit;
+        }
+        input:focus-visible,
+        button:focus-visible,
+        a:focus-visible {
+            outline: 3px solid rgba(8, 127, 117, .3);
+            outline-offset: 2px;
+        }
+        input:focus { border-color: #087f75; box-shadow: 0 0 0 3px rgba(8, 127, 117, .14); }
+        button {
+            background: linear-gradient(135deg, #087f75, #08645e);
+            transition: transform .18s ease, filter .18s ease;
+        }
+        button:hover { filter: brightness(1.04); transform: translateY(-1px); }
+        a { color: #08645e; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition-duration: .01ms !important; }
+        }

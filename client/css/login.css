@@ -235,3 +235,119 @@
             .page-shell { min-height: 100vh; height: auto; }
             .main { min-height: 100vh; }
         }
+
+        :root {
+            --bg: #f3f6f9;
+            --bg-soft: #edf3f5;
+            --panel: #ffffff;
+            --panel-solid: #ffffff;
+            --primary: #087f75;
+            --primary-strong: #08645e;
+            --success: #15836d;
+            --text: #172a3a;
+            --muted: #647789;
+            --border: #dce5ea;
+            --shadow: 0 16px 38px rgba(17, 42, 59, .10);
+            --sidebar: #122a3a;
+            --sidebar-soft: #193b4a;
+            --sidebar-text: #f2f7f8;
+        }
+
+        body.dark-theme {
+            --bg: #0c1821;
+            --bg-soft: #10232c;
+            --panel: #142630;
+            --panel-solid: #172c37;
+            --primary: #39b6a5;
+            --primary-strong: #258f82;
+            --success: #48c8a9;
+            --text: #e8f1f3;
+            --muted: #9db1ba;
+            --border: #2a414b;
+            --shadow: 0 18px 38px rgba(0, 0, 0, .28);
+            --sidebar: #0b1c27;
+            --sidebar-soft: #102b37;
+            --sidebar-text: #edf5f6;
+        }
+
+        html, body {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        body { line-height: 1.5; }
+        .page-shell { grid-template-columns: 232px minmax(0, 1fr); }
+        .sidebar {
+            background: linear-gradient(180deg, var(--sidebar), var(--sidebar-soft));
+            padding: 24px 16px;
+        }
+        .brand-logo { max-width: 174px; }
+        .nav-link {
+            min-height: 42px;
+            border-radius: 11px;
+            transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+        }
+        .nav-link.active,
+        .nav-link:hover {
+            background: rgba(57, 182, 165, .16);
+            border-color: rgba(99, 211, 194, .24);
+        }
+        .nav-link:hover { transform: translateX(2px); }
+        .main { padding: 22px clamp(16px, 2.5vw, 36px); }
+        .panel {
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            padding: 24px;
+        }
+        h1 { font-size: clamp(1.7rem, 2.5vw, 2.35rem); letter-spacing: -.04em; }
+        .topbar { margin-bottom: 20px; }
+        form { gap: 16px; }
+        .field { gap: 7px; }
+        label { font-size: .9rem; }
+        input {
+            min-height: 44px;
+            border-radius: 10px;
+            font: inherit;
+        }
+        input:focus {
+            outline: 3px solid color-mix(in srgb, var(--primary) 18%, transparent);
+            outline-offset: 1px;
+            border-color: var(--primary);
+            box-shadow: none;
+        }
+        button[type="submit"],
+        .theme-toggle {
+            min-height: 42px;
+            border-radius: 10px;
+            font: inherit;
+            font-size: .92rem;
+            font-weight: 700;
+            transition: transform .18s ease, filter .18s ease, border-color .18s ease;
+        }
+        button[type="submit"]:hover,
+        .theme-toggle:hover { transform: translateY(-1px); }
+        button[type="submit"]:hover { filter: brightness(1.04); }
+        .theme-toggle:focus-visible,
+        .nav-link:focus-visible,
+        button:focus-visible,
+        a:focus-visible,
+        input:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 36%, transparent);
+            outline-offset: 2px;
+        }
+        #message { line-height: 1.45; }
+
+        @media (max-width: 1080px) and (min-width: 901px) {
+            .page-shell { grid-template-columns: 208px minmax(0, 1fr); }
+            .main { padding: 18px 14px; }
+        }
+        @media (max-width: 900px) {
+            .page-shell { grid-template-columns: minmax(0, 1fr); }
+            .sidebar { padding: 14px 18px; }
+            .nav-link:hover { transform: none; }
+        }
+        @media (max-width: 640px) {
+            .main { padding: 15px; }
+            .panel { padding: 19px 17px; border-radius: 14px; }
+            form { gap: 14px; }
+        }

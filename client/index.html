@@ -18,16 +18,18 @@
                 <div class="nav-group">
                     <span class="nav-section-title">Workspace</span>
                     <a class="nav-link active" href="/dashboard" aria-current="page">Dashboard</a>
+                    <a class="nav-link" href="/profile">My profile</a>
                 </div>
                 <div class="nav-group">
                     <span class="nav-section-title">Banking</span>
                     <a class="nav-link" href="/accounts">Accounts</a>
                     <a class="nav-link" href="/transfers">Transfers</a>
                     <a class="nav-link" href="/transactions">Transactions</a>
+                    <a class="nav-link investment-nav-link" href="/investments">Investments</a>
                 </div>
                 <div id="adminNavigationGroup" class="nav-group" hidden>
                     <span class="nav-section-title">Administration</span>
-                    <a class="nav-link" href="/create">Open Account</a>
+                    <a class="nav-link" href="/admin">Admin</a>
                 </div>
                 <button id="logoutButton" class="nav-link" type="button">Sign out</button>
             </nav>
@@ -40,6 +42,12 @@
                 </div>
                 <div class="top-actions">
                     <a class="primary-btn" href="/transfers">Make a transfer</a>
+                    <div class="profile-photo-control">
+                        <img id="profilePhoto" class="profile-photo" alt="Your profile photo" hidden>
+                        <label class="profile-photo-label" for="profilePhotoInput">Profile photo</label>
+                        <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
+                        <button id="removeProfilePhotoButton" class="profile-photo-remove" type="button" hidden>Remove</button>
+                    </div>
                     <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
                 </div>
             </div>

@@ -311,3 +311,53 @@
                 transition-duration: .01ms !important;
             }
         }
+
+        :root {
+            color-scheme: light;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #172a3a;
+            background: #f3f6f9;
+        }
+        body { line-height: 1.5; background: #f3f6f9; }
+        .welcome-shell { background: #fff; }
+        .hero {
+            background:
+                linear-gradient(145deg, rgba(10, 31, 45, .94), rgba(15, 63, 76, .82) 58%, rgba(12, 104, 97, .68)),
+                url('/images/home.png') center / cover;
+        }
+        .eyebrow { color: #8de0cb; }
+        .welcome-panel { background: #fff; }
+        .panel-kicker { color: #087f75; }
+        h2 { color: #172a3a; }
+        .panel-description { color: #647789; }
+        .button {
+            border-radius: 11px;
+            background: linear-gradient(135deg, #087f75, #08645e);
+            box-shadow: 0 8px 18px rgba(8, 127, 117, .2);
+            transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+        .button:hover { transform: translateY(-2px); box-shadow: 0 12px 22px rgba(8, 127, 117, .24); }
+        .button-secondary {
+            border-color: #dce5ea;
+            color: #23465a;
+            background: #fff;
+            box-shadow: none;
+        }
+        .button-secondary:hover { border-color: #9ab8bd; box-shadow: 0 6px 15px rgba(17, 42, 59, .08); }
+        .features { border-color: #e4ebee; }
+        .features li { color: #52697a; }
+        .feature-mark { color: #08645e; background: #e2f5ef; }
+        a:focus-visible,
+        button:focus-visible {
+            outline: 3px solid rgba(8, 127, 117, .55);
+            outline-offset: 3px;
+        }
+
+        @media (max-width: 760px) {
+            .welcome-shell { border-radius: 0; }
+            .hero { min-height: 320px; }
+            .welcome-panel { padding: clamp(24px, 6vw, 42px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { transition-duration: .01ms !important; }
+        }

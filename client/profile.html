@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | My Profile</title>
+    <link rel="icon" type="image/png" href="/images/bg.png">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body class="dashboard-page profile-page">
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div class="brand"><img class="brand-logo" src="/images/bg.png" alt="Sky Bank"></div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <div class="nav-group">
+                    <span class="nav-section-title">Workspace</span>
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                    <a class="nav-link active" href="/profile" aria-current="page">My profile</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Banking</span>
+                    <a class="nav-link" href="/accounts">Accounts</a>
+                    <a class="nav-link" href="/transfers">Transfers</a>
+                    <a class="nav-link" href="/transactions">Transactions</a>
+                    <a class="nav-link investment-nav-link" href="/investments">Investments</a>
+                </div>
+                <div id="adminNavigationGroup" class="nav-group" hidden>
+                    <span class="nav-section-title">Administration</span>
+                    <a class="nav-link" href="/admin">Admin</a>
+                </div>
+                <button id="logoutButton" class="nav-link" type="button">Sign out</button>
+            </nav>
+        </aside>
+        <main class="main single-page">
+            <header class="topbar">
+                <div>
+                    <h1 class="page-title">My profile</h1>
+                    <p class="profile-subtitle">Manage your personal information, photo, and account security.</p>
+                </div>
+                <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
+            </header>
+            <p id="profileStatus" class="filter-status" role="status" aria-live="polite"></p>
+            <div class="profile-grid">
+                <section class="panel-card profile-card" aria-labelledby="personalHeading">
+                    <h2 id="personalHeading">Personal information</h2>
+                    <div class="profile-identity">
+                        <img id="profilePhoto" class="profile-avatar" alt="Your profile photo" hidden>
+                        <div id="profileInitials" class="profile-avatar profile-initials" aria-hidden="true">SB</div>
+                        <div>
+                            <strong id="profileDisplayName">Loading profile...</strong>
+                            <p id="profileRole" class="panel-description"></p>
+                        </div>
+                    </div>
+                    <form id="profileForm" class="profile-form">
+                        <label for="profileName">Full name
+                            <input id="profileName" name="name" type="text" maxlength="100" autocomplete="name" required>
+                        </label>
+                        <label for="profileEmail">Email address
+                            <input id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required>
+                        </label>
+                        <label for="profileCurrentPassword">Current password <span class="panel-description">(required to change email)</span>
+                            <input id="profileCurrentPassword" name="currentPassword" type="password" maxlength="128" autocomplete="current-password">
+                        </label>
+                        <div class="profile-actions">
+                            <button id="saveProfileButton" class="primary-btn" type="submit">Save changes</button>
+                            <button id="cancelProfileButton" class="secondary-btn" type="button">Reset</button>
+                        </div>
+                    </form>
+                </section>
+                <section class="panel-card profile-card" aria-labelledby="photoHeading">
+                    <h2 id="photoHeading">Profile photo</h2>
+                    <p class="panel-description">Use a JPEG, PNG, or WebP image up to 2 MB.</p>
+                    <div class="profile-photo-actions">
+                        <label class="profile-photo-label" for="profilePhotoInput">Choose photo</label>
+                        <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
+                        <button id="removeProfilePhotoButton" class="secondary-btn" type="button">Remove photo</button>
+                    </div>
+                </section>
+                <section class="panel-card profile-card" aria-labelledby="accountIdentityHeading">
+                    <h2 id="accountIdentityHeading">Account details</h2>
+                    <dl class="profile-details">
+                        <div><dt>Customer ID</dt><dd id="profileCustomerId">—</dd></div>
+                        <div><dt>Account status</dt><dd id="profileAccountStatus">—</dd></div>
+                        <div><dt>Primary account</dt><dd id="profileAccountNumber">—</dd></div>
+                        <div><dt>Currency</dt><dd>ZAR</dd></div>
+                    </dl>
+                    <p class="panel-description">For account closures or ownership changes, contact an administrator.</p>
+                </section>
+                <section class="panel-card profile-card" aria-labelledby="securityHeading">
+                    <h2 id="securityHeading">Change password</h2>
+                    <p class="panel-description">Changing your password signs out other active sessions.</p>
+                    <form id="passwordForm" class="profile-form">
+                        <label for="currentPassword">Current password
+                            <input id="currentPassword" name="currentPassword" type="password" maxlength="128" autocomplete="current-password" required>
+                        </label>
+                        <label for="newPassword">New password
+                            <input id="newPassword" name="newPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+                        </label>
+                        <label for="confirmPassword">Confirm new password
+                            <input id="confirmPassword" name="confirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+                        </label>
+                        <button id="changePasswordButton" class="primary-btn" type="submit">Update password</button>
+                    </form>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="/js/profile.js"></script>
+</body>
+</html>

@@ -140,7 +140,10 @@
 
         .nav-link:focus-visible,
         .theme-toggle:focus-visible,
-        .transaction-form button:focus-visible {
+        .transaction-form button:focus-visible,
+        .profile-form button:focus-visible,
+        .profile-photo-actions button:focus-visible,
+        .profile-photo-label:focus-visible {
             outline: 2px solid var(--primary);
             outline-offset: 2px;
         }
@@ -187,6 +190,38 @@
             align-items: center;
             gap: 8px;
             flex-wrap: wrap;
+        }
+
+        .profile-photo-control { display: flex; align-items: center; gap: 6px; }
+        .profile-photo {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .profile-photo-label,
+        .profile-photo-remove {
+            color: var(--text);
+            font: inherit;
+            cursor: pointer;
+            background: var(--panel-solid);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+        .profile-photo-label:hover,
+        .profile-photo-remove:hover { border-color: var(--primary); }
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
         .theme-toggle,
@@ -331,6 +366,142 @@
             font-size: .88rem;
             line-height: 1.5;
         }
+
+        .simulation-notice {
+            margin: 0;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel);
+            color: var(--muted);
+        }
+
+        .profile-subtitle {
+            margin: 5px 0 0;
+            color: rgba(255,255,255,0.82);
+        }
+
+        .profile-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+            gap: 12px;
+        }
+
+        .profile-card { gap: 12px; }
+        .profile-card h2 { margin: 0; }
+        .profile-identity { display: flex; align-items: center; gap: 12px; }
+        .profile-identity strong { overflow-wrap: anywhere; }
+        .profile-identity .panel-description { margin: 4px 0 0; text-transform: capitalize; }
+
+        .profile-avatar {
+            width: 68px;
+            height: 68px;
+            flex: 0 0 68px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .profile-initials {
+            display: grid;
+            place-items: center;
+            background: var(--bg-soft);
+            color: var(--primary-strong);
+            font-size: 1.15rem;
+            font-weight: 800;
+        }
+
+        .profile-form { display: grid; gap: 12px; }
+        .profile-form label {
+            display: grid;
+            gap: 6px;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 700;
+        }
+
+        .profile-form input {
+            width: 100%;
+            min-width: 0;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 10px 12px;
+            background: var(--panel-solid);
+            color: var(--text);
+            font: inherit;
+        }
+
+        .profile-form input:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 1px;
+        }
+
+        .profile-actions,
+        .profile-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .profile-form button,
+        .profile-photo-actions button,
+        .profile-photo-label {
+            min-height: 40px;
+            border-radius: 9px;
+            padding: 9px 13px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .profile-form button:disabled,
+        .profile-photo-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .secondary-btn,
+        .profile-photo-label {
+            border: 1px solid var(--border);
+            background: var(--panel-solid);
+            color: var(--text);
+        }
+
+        .profile-photo-label { display: inline-flex; align-items: center; }
+        .profile-details { display: grid; gap: 0; margin: 0; }
+        .profile-details > div {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .profile-details dt { color: var(--muted); }
+        .profile-details dd { margin: 0; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+        .profile-details + .panel-description { margin: 0; }
+
+        .investment-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .investment-panel { padding: 18px; }
+        .investment-panel h2 { margin: 0 0 12px; }
+        .stock-actions { display: flex; align-items: center; gap: 6px; min-width: 190px; }
+        .stock-actions input {
+            width: 72px;
+            min-width: 0;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-solid);
+            color: var(--text);
+        }
+        .stock-actions button { padding: 8px 10px; }
+        .stock-actions .secondary-btn {
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--panel-solid);
+            color: var(--text);
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .stock-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .panel-card {
             background: var(--panel);
@@ -688,6 +859,8 @@
             .top-actions { width: 100%; }
             .top-actions > * { flex: 1 1 auto; }
             .stats { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); }
+            .investment-summary { grid-template-columns: 1fr; }
+            .profile-grid { grid-template-columns: minmax(0, 1fr); }
             .panel-card { padding: 14px 12px; }
             .account-open-form { grid-template-columns: minmax(0, 1fr); }
             table { table-layout: fixed; }
@@ -713,4 +886,247 @@
             .transaction-form button { padding: 8px; }
             .dashboard-header { margin-bottom: 6px; }
             th, td { padding: 5px 6px; }
+        }
+
+        :root {
+            --bg: #f3f6f9;
+            --bg-soft: #edf3f5;
+            --panel: #ffffff;
+            --panel-solid: #ffffff;
+            --primary: #087f75;
+            --primary-strong: #08645e;
+            --success: #15836d;
+            --text: #172a3a;
+            --muted: #647789;
+            --border: #dce5ea;
+            --shadow: 0 12px 28px rgba(17, 42, 59, .07);
+            --sidebar: #122a3a;
+            --sidebar-soft: #193b4a;
+            --sidebar-text: #f2f7f8;
+        }
+
+        body.dark-theme {
+            --bg: #0c1821;
+            --bg-soft: #10232c;
+            --panel: #142630;
+            --panel-solid: #172c37;
+            --primary: #39b6a5;
+            --primary-strong: #258f82;
+            --success: #48c8a9;
+            --text: #e8f1f3;
+            --muted: #9db1ba;
+            --border: #2a414b;
+            --shadow: 0 16px 34px rgba(0, 0, 0, .23);
+            --sidebar: #0b1c27;
+            --sidebar-soft: #102b37;
+            --sidebar-text: #edf5f6;
+        }
+
+        html, body {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        body { line-height: 1.5; }
+
+        .page-shell { grid-template-columns: 232px minmax(0, 1fr); }
+        .sidebar {
+            background: linear-gradient(180deg, var(--sidebar), var(--sidebar-soft));
+            padding: 24px 16px;
+        }
+        .brand-logo { max-width: 174px; }
+        .nav-section-title { color: #9ab0bb; font-size: .66rem; }
+        .nav-link {
+            min-height: 42px;
+            border-radius: 11px;
+            color: var(--sidebar-text);
+            transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+        }
+        .nav-link.active {
+            background: rgba(57, 182, 165, .16);
+            border-color: rgba(99, 211, 194, .24);
+        }
+        .nav-link:hover { transform: translateX(2px); }
+        .nav-link:focus-visible,
+        .theme-toggle:focus-visible,
+        .primary-btn:focus-visible,
+        .secondary-btn:focus-visible,
+        .ghost-btn:focus-visible,
+        .transaction-form button:focus-visible,
+        .profile-form button:focus-visible,
+        .profile-photo-actions button:focus-visible,
+        .profile-photo-label:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            outline-offset: 2px;
+        }
+
+        .main { padding: 24px clamp(18px, 2.4vw, 36px); gap: 16px; }
+        .dashboard-page .main { min-height: 100vh; }
+        .topbar {
+            min-height: 86px;
+            padding: 18px 22px;
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 18px;
+            background: linear-gradient(115deg, #102d3e 0%, #145b60 66%, #187d74 100%);
+            box-shadow: 0 12px 26px rgba(17, 52, 65, .15);
+        }
+        .page-title {
+            font-size: clamp(1.55rem, 2.3vw, 2.05rem);
+            line-height: 1.15;
+            letter-spacing: -.035em;
+        }
+        .top-actions { gap: 10px; }
+        .theme-toggle,
+        .ghost-btn,
+        .profile-photo-label,
+        .profile-photo-remove {
+            min-height: 40px;
+            border-radius: 10px;
+            padding: 8px 13px;
+            font: inherit;
+            font-size: .86rem;
+            font-weight: 700;
+            transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+        }
+        .theme-toggle:hover,
+        .ghost-btn:hover,
+        .profile-photo-label:hover,
+        .profile-photo-remove:hover { border-color: var(--primary); transform: translateY(-1px); }
+        .primary-btn {
+            min-height: 40px;
+            border-radius: 10px;
+            padding: 9px 14px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            box-shadow: 0 5px 12px color-mix(in srgb, var(--primary) 20%, transparent);
+            font-size: .88rem;
+            transition: transform .18s ease, box-shadow .18s ease;
+        }
+        .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 16px color-mix(in srgb, var(--primary) 24%, transparent); }
+        .stats { gap: 14px; }
+        .stat-card {
+            padding: 16px 18px;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+        }
+        .stat-label { color: var(--muted); font-size: .68rem; letter-spacing: .1em; }
+        .stat-value { font-size: clamp(1.22rem, 2vw, 1.62rem); letter-spacing: -.025em; }
+        .panel-card {
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 18px;
+        }
+        .panel-card h2,
+        .dashboard-header h2 { font-size: 1.02rem; letter-spacing: -.01em; }
+        .panel-description { font-size: .84rem; }
+        .account-card {
+            padding: 13px 14px;
+            border-radius: 12px;
+            transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+        }
+        .account-card:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); transform: translateY(-1px); }
+        .account-balance { color: var(--primary-strong); }
+        body.dark-theme .account-balance { color: var(--primary); }
+        .transaction-form input,
+        .transaction-form select,
+        .profile-form input,
+        .filter-form input,
+        .filter-form select,
+        .stock-actions input {
+            min-height: 42px;
+            border-color: var(--border);
+            border-radius: 10px;
+            background: var(--panel-solid);
+            color: var(--text);
+        }
+        input:focus-visible,
+        select:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary) 22%, transparent);
+            outline-offset: 1px;
+            border-color: var(--primary);
+        }
+        .transaction-form button {
+            min-height: 42px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+            transition: transform .18s ease, filter .18s ease;
+        }
+        .transaction-form button:hover { filter: brightness(1.04); transform: translateY(-1px); }
+        .filter-button-primary { background: var(--primary); }
+        .panel-link { color: var(--primary-strong); }
+        body.dark-theme .panel-link { color: var(--primary); }
+        .table-wrap {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel-solid);
+        }
+        table { font-size: .82rem; }
+        thead { background: var(--bg-soft); }
+        th {
+            color: var(--muted);
+            font-size: .67rem;
+            font-weight: 750;
+            letter-spacing: .08em;
+        }
+        th, td { padding: 11px 12px; }
+        tbody tr { transition: background-color .16s ease; }
+        tbody tr:hover { background: color-mix(in srgb, var(--primary) 5%, var(--panel-solid)); }
+        .filter-status,
+        #status { color: var(--muted); line-height: 1.45; }
+        .simulation-notice {
+            border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--primary) 6%, var(--panel));
+            color: var(--text);
+            line-height: 1.55;
+        }
+        .profile-card { padding: 22px; }
+        .profile-initials { color: var(--primary-strong); }
+        body.dark-theme .profile-initials { color: var(--primary); }
+
+        @media (max-width: 1080px) and (min-width: 901px) {
+            .page-shell { grid-template-columns: 208px minmax(0, 1fr); }
+            .main { padding: 18px 16px; }
+            .content-grid,
+            .dashboard-page .content-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+            .dashboard-page .content-grid { min-height: 0; }
+            .dashboard-page .overview-panel,
+            .dashboard-page .activity-panel { grid-column: 1; grid-row: auto; }
+            .dashboard-page .overview-panel { min-height: 200px; }
+            .dashboard-page .activity-panel { min-height: 320px; }
+        }
+
+        @media (max-width: 900px) {
+            .page-shell { grid-template-columns: minmax(0, 1fr); }
+            .sidebar { padding: 14px 18px; }
+            .sidebar-nav {
+                flex: 0 0 auto;
+                flex-direction: column;
+                align-content: flex-start;
+                align-items: stretch;
+            }
+            .nav-group {
+                min-width: 0;
+                flex: 0 0 auto;
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            .nav-section-title { flex: 1 0 100%; }
+            .nav-link { width: auto; min-height: 40px; flex: 1 1 auto; }
+            .nav-link:hover { transform: none; }
+            .main { padding: 18px; }
+            .topbar { min-height: 74px; }
+        }
+
+        @media (max-width: 640px) {
+            .main { padding: 14px; gap: 12px; }
+            .topbar { padding: 15px; border-radius: 14px; }
+            .top-actions { gap: 8px; }
+            .nav-group { gap: 5px; }
+            .nav-link { flex-basis: calc(50% - 5px); justify-content: center; padding: 9px 8px; }
+            #logoutButton { flex-basis: 100%; }
+            .stats { gap: 9px; }
+            .stat-card { padding: 13px; }
+            .panel-card { padding: 15px; }
+            th, td { padding: 9px 8px; }
         }

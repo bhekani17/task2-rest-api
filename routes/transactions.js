@@ -115,6 +115,9 @@ function registerTransactionRoutes(app, dependencies) {
   // POST /api/transactions applies a ledger operation and its balance changes atomically.
   app.post('/api/transactions', async (req, res) => {
     const { type, accountNumber, destinationAccountNumber, description = '' } = req.body || {};
+    if (req.authUser.role === 'admin') {
+      return res.status(403).json({ error: 'Administrators cannot create transactions.' });
+    }
     const amountMinor = parseAmountMinor(req.body?.amount);
     const idempotencyKey = req.get('Idempotency-Key');
     if (!['deposit', 'withdrawal', 'transfer'].includes(type)) {
@@ -210,7 +213,7 @@ function registerTransactionRoutes(app, dependencies) {
             error.statusCode = exists ? 409 : 404;
             throw error;
           }
-          recipientUserId = String(toAccount._id);
+          recipientUserId = String(toAccount.ownerUserId);
           await User.updateOne(
             { _id: req.authUser._id, accountNumber },
             { $inc: { balanceMinor: amountMinor } },

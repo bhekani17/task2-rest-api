@@ -30,6 +30,8 @@ test('transaction filters validate dates and constrain customers to their own ac
   assert.equal(buildTransactionFilter({ from: '2026-02-30' }, customer).error.status, 400);
   assert.equal(buildTransactionFilter({ from: '2026-04-01', to: '2026-03-01' }, customer).error.status, 400);
   assert.equal(buildTransactionFilter({ type: 'unknown' }, customer).error.status, 400);
+  assert.equal(buildTransactionFilter({ type: 'stock_buy' }, customer).filter.$and[1].type, 'stock_buy');
+  assert.equal(buildTransactionFilter({ type: 'stock_sell' }, customer).filter.$and[1].type, 'stock_sell');
   assert.equal(buildTransactionFilter({ accountNumber: ['1000000001'] }, customer).error.status, 400);
 });
 

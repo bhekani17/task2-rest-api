@@ -6,9 +6,15 @@ const statusMessage = document.querySelector('#status');
         const totalTransactions = document.querySelector('#totalTransactions');
         const themeToggle = document.querySelector('#themeToggle');
         const logoutButton = document.querySelector('#logoutButton');
-        const accountCreationLinks = document.querySelectorAll('a[href="/create"]');
+        const accountCreationLinks = document.querySelectorAll('a[href="/admin"], a[href="/create"]');
         const adminNavigationGroup = document.querySelector('#adminNavigationGroup');
         const transactionForm = document.querySelector('#transactionForm');
+        const transactionAccessNotice = document.querySelector('#transactionAccessNotice');
+        const transferLinks = document.querySelectorAll('a.primary-btn[href="/transfers"]');
+        const profilePhoto = document.querySelector('#profilePhoto');
+        const profilePhotoInput = document.querySelector('#profilePhotoInput');
+        const removeProfilePhotoButton = document.querySelector('#removeProfilePhotoButton');
+        const investmentLinks = document.querySelectorAll('.investment-nav-link');
         const openAccountForm = document.querySelector('#openAccountForm');
         const savingsInterestPolicy = document.querySelector('#savingsInterestPolicy');
         const accountLimitMessage = document.querySelector('#accountLimitMessage');
@@ -32,6 +38,7 @@ const statusMessage = document.querySelector('#status');
         const socket = io();
         const transactionPageSize = 25;
         const dashboardTransactionLimit = 5;
+        const transactionTypeLabels = { stock_buy: 'Stock purchase', stock_sell: 'Stock sale' };
         let transactionPage = 1;
         let transactionTotal = 0;
         let accountLimit = 3;
@@ -169,16 +176,18 @@ const statusMessage = document.querySelector('#status');
             for (const transaction of transactions) {
                 const row = document.createElement('tr');
                 createCell(row, new Date(transaction.createdAt).toLocaleString());
-                createCell(row, transaction.type);
+                createCell(row, transactionTypeLabels[transaction.type] || transaction.type);
                 createCell(row, transaction.fromAccount || '—');
                 createCell(row, transaction.toAccount || '—');
                 const amountCell = createCell(row, formatMoney(transaction.amount));
                 amountCell.className = ['deposit', 'interest'].includes(transaction.type)
                     ? 'amount-positive'
-                    : transaction.type === 'withdrawal' ? 'amount-negative' : '';
+                    : ['withdrawal', 'stock_buy'].includes(transaction.type) ? 'amount-negative' : '';
                 amountCell.textContent = ['deposit', 'interest'].includes(transaction.type)
                     ? `+${formatMoney(transaction.amount)}`
-                    : transaction.type === 'withdrawal' ? `-${formatMoney(transaction.amount)}` : formatMoney(transaction.amount);
+                    : ['withdrawal', 'stock_buy'].includes(transaction.type)
+                        ? `-${formatMoney(transaction.amount)}`
+                        : ['stock_sell'].includes(transaction.type) ? `+${formatMoney(transaction.amount)}` : formatMoney(transaction.amount);
                 transactionsTable?.append(row);
             }
 
@@ -261,8 +270,20 @@ const statusMessage = document.querySelector('#status');
 
                 accountLimit = accountsResult.accountLimit;
                 renderAccounts(accountsResult.accounts, accountsResult.ownedAccountCount);
+                const isAdmin = profileResult.user.role === 'admin';
+                for (const link of investmentLinks) link.hidden = isAdmin;
+                if (profilePhoto) {
+                    profilePhoto.hidden = !profileResult.user.hasProfilePhoto;
+                    profilePhoto.src = profileResult.user.hasProfilePhoto
+                        ? `/api/auth/profile/photo?updated=${Date.now()}`
+                        : '';
+                }
+                if (removeProfilePhotoButton) removeProfilePhotoButton.hidden = !profileResult.user.hasProfilePhoto;
+                if (transactionForm) transactionForm.hidden = isAdmin;
+                if (transactionAccessNotice) transactionAccessNotice.hidden = !isAdmin;
+                for (const link of transferLinks) link.hidden = isAdmin;
                 if (demoDepositPanel) {
-                    demoDepositPanel.hidden = !profileResult.demoDepositsEnabled || accountsResult.accounts.length === 0;
+                    demoDepositPanel.hidden = isAdmin || !profileResult.demoDepositsEnabled || accountsResult.accounts.length === 0;
                 }
                 if (savingsInterestPolicy) savingsInterestPolicy.hidden = !profileResult.savingsInterestEnabled;
                 const accountTypeSelect = openAccountForm?.elements.accountType;
@@ -287,6 +308,58 @@ const statusMessage = document.querySelector('#status');
             event.preventDefault();
             transactionPage = 1;
             loadTransactions();
+        });
+
+        profilePhotoInput?.addEventListener('change', async () => {
+            const [file] = profilePhotoInput.files || [];
+            if (!file) return;
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                if (statusMessage) statusMessage.textContent = 'Choose a JPEG, PNG, or WebP image.';
+                profilePhotoInput.value = '';
+                return;
+            }
+            if (file.size > 2 * 1024 * 1024) {
+                if (statusMessage) statusMessage.textContent = 'Profile photos must be 2 MB or smaller.';
+                profilePhotoInput.value = '';
+                return;
+            }
+            if (statusMessage) statusMessage.textContent = 'Uploading profile photo...';
+            try {
+                const response = await fetch('/api/auth/profile/photo', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': file.type },
+                    body: file
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    if (response.status === 401) return window.location.replace('/login');
+                    throw new Error(result.error || 'Profile photo upload failed.');
+                }
+                if (statusMessage) statusMessage.textContent = result.message;
+                await loadDashboard();
+            } catch (error) {
+                if (statusMessage) statusMessage.textContent = error.message;
+            } finally {
+                profilePhotoInput.value = '';
+            }
+        });
+
+        removeProfilePhotoButton?.addEventListener('click', async () => {
+            removeProfilePhotoButton.disabled = true;
+            try {
+                const response = await fetch('/api/auth/profile/photo', { method: 'DELETE' });
+                const result = await response.json();
+                if (!response.ok) {
+                    if (response.status === 401) return window.location.replace('/login');
+                    throw new Error(result.error || 'Profile photo could not be removed.');
+                }
+                if (statusMessage) statusMessage.textContent = result.message;
+                await loadDashboard();
+            } catch (error) {
+                if (statusMessage) statusMessage.textContent = error.message;
+            } finally {
+                removeProfilePhotoButton.disabled = false;
+            }
         });
 
         openAccountForm?.addEventListener('submit', async (event) => {

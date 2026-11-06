@@ -40,9 +40,15 @@ function registerPageRoutes(app, dependencies) {
   });
 
   app.get('/dashboard', requirePageAuth, sendClientPage('index.html'));
+  app.get('/profile', requirePageAuth, sendClientPage('profile.html'));
   app.get('/accounts', requirePageAuth, sendClientPage('accounts.html'));
   app.get('/transfers', requirePageAuth, sendClientPage('transfers.html'));
   app.get('/transactions', requirePageAuth, sendClientPage('transactions.html'));
+  app.get('/investments', requirePageAuth, (req, res, next) => {
+    if (req.authUser.role !== 'customer') return res.redirect('/dashboard');
+    sendClientPage('investments.html')(req, res, next);
+  });
+  app.get('/admin', requirePageAdmin, sendAdminPage('create.html'));
   app.get('/create', requirePageAdmin, sendAdminPage('create.html'));
 
   async function redirectAuthenticatedCustomer(req, res, next) {

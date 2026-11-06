@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sky Bank | Open Account</title>
+    <title>Sky Bank | Customer Management</title>
     <link rel="icon" type="image/jpeg" href="/images/bg.png">
     <link rel="stylesheet" href="/admin/css/create.css">
 </head>
@@ -16,41 +16,183 @@
 
             <nav class="sidebar-nav">
                 <a class="nav-link" href="/dashboard">Dashboard</a>
+                <a class="nav-link" href="/profile">My profile</a>
                 <a class="nav-link" href="/accounts">Accounts</a>
                 <a class="nav-link" href="/transfers">Transfers</a>
                 <a class="nav-link" href="/transactions">Transactions</a>
-                <a class="nav-link active" href="/create">Open Account</a>
-                <a class="nav-link" href="/login">Login</a>
-                <a class="nav-link" href="/register">Register</a>
+                <a class="nav-link active" href="/admin" aria-current="page">Admin</a>
+                <button id="logoutButton" class="nav-link" type="button">Sign out</button>
             </nav>
         </aside>
 
         <main class="main">
             <div class="panel">
                 <div class="topbar">
-                    <h1>Create customer account</h1>
+                    <div>
+                        <h1>Customer management</h1>
+                        <p class="panel-intro">Create, view, update, and close customer accounts.</p>
+                    </div>
                     <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
                 </div>
 
-                <form id="userForm">
-                    <div class="field">
-                        <label for="name">Name</label>
-                        <input id="name" name="name" type="text" placeholder="Enter full name" required>
-                    </div>
+                <section class="summary-grid" aria-label="Bank overview">
+                    <article class="summary-card"><span>Active customers</span><strong id="activeCustomers">—</strong></article>
+                    <article class="summary-card"><span>Pending customers</span><strong id="pendingCustomers">—</strong></article>
+                    <article class="summary-card"><span>Active accounts</span><strong id="activeAccounts">—</strong></article>
+                    <article class="summary-card"><span>Total balances</span><strong id="totalBalance">—</strong></article>
+                    <article class="summary-card"><span>Ledger entries</span><strong id="totalTransactions">—</strong></article>
+                </section>
 
-                    <div class="field">
-                        <label for="email">Email</label>
-                        <input id="email" name="email" type="email" placeholder="Enter email" required>
-                    </div>
+                <section class="admin-section" aria-labelledby="createHeading">
+                    <h2 id="createHeading">Create customer</h2>
+                    <form id="userForm" class="create-user-form">
+                        <div class="field">
+                            <label for="name">Name</label>
+                            <input id="name" name="name" type="text" maxlength="100" placeholder="Enter full name" required>
+                        </div>
 
-                    <button type="submit">Create customer account</button>
-                </form>
+                        <div class="field">
+                            <label for="email">Email</label>
+                            <input id="email" name="email" type="email" placeholder="Enter email" required>
+                        </div>
+                        <button type="submit">Create customer</button>
+                    </form>
+                    <label id="activationLinkField" class="field activation-field" for="activationLink" hidden>
+                        Customer activation link (expires in 24 hours)
+                        <input id="activationLink" type="text" readonly>
+                    </label>
+                </section>
 
-                <label id="activationLinkField" class="field" for="activationLink" hidden>
-                    Customer activation link (expires in 24 hours)
-                    <input id="activationLink" type="text" readonly>
-                </label>
+                <section id="editSection" class="admin-section edit-section" aria-labelledby="editHeading" hidden>
+                    <h2 id="editHeading">Edit customer</h2>
+                    <form id="editUserForm" class="create-user-form">
+                        <input id="editUserId" type="hidden">
+                        <div class="field">
+                            <label for="editName">Name</label>
+                            <input id="editName" name="name" type="text" maxlength="100" required>
+                        </div>
+                        <div class="field">
+                            <label for="editEmail">Email</label>
+                            <input id="editEmail" name="email" type="email" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit">Save changes</button>
+                            <button id="cancelEditButton" class="secondary-btn" type="button">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
                 <p id="message" role="status" aria-live="polite"></p>
+
+                <section class="admin-section customer-section" aria-labelledby="customersHeading">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="customersHeading">Customers</h2>
+                            <p class="section-description">Closing a customer requires all account balances to be zero.</p>
+                        </div>
+                        <button id="refreshCustomersButton" class="secondary-btn" type="button">Refresh</button>
+                    </div>
+                    <form id="customerFilters" class="filter-form">
+                        <label for="customerSearch">Search customers
+                            <input id="customerSearch" name="search" type="search" maxlength="80" placeholder="Name, email, or ID">
+                        </label>
+                        <label for="customerStatusFilter">Status
+                            <select id="customerStatusFilter" name="status">
+                                <option value="all">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="pending">Pending</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </label>
+                    </form>
+                    <p id="customersStatus" class="table-status" role="status" aria-live="polite">Loading customers...</p>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th scope="col">ID</th>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Email</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Balance</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="customersTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="previousCustomersPage" class="secondary-btn" type="button">Previous</button>
+                        <span id="customersPagination" aria-live="polite"></span>
+                        <button id="nextCustomersPage" class="secondary-btn" type="button">Next</button>
+                    </div>
+                </section>
+
+                <section class="admin-section" aria-labelledby="accountsHeading">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="accountsHeading">Accounts</h2>
+                            <p class="section-description">Review account owners and close zero-balance accounts.</p>
+                        </div>
+                        <button id="refreshAccountsButton" class="secondary-btn" type="button">Refresh</button>
+                    </div>
+                    <form id="accountFilters" class="filter-form">
+                        <label for="accountSearch">Search accounts
+                            <input id="accountSearch" name="search" type="search" maxlength="80" placeholder="Account number, owner, or email">
+                        </label>
+                        <label for="accountStatusFilter">Status
+                            <select id="accountStatusFilter" name="status">
+                                <option value="all">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="pending">Pending</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </label>
+                    </form>
+                    <p id="accountsStatus" class="table-status" role="status" aria-live="polite">Loading accounts...</p>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Account</th><th>Owner</th><th>Type</th><th>Status</th><th>Balance</th><th>Action</th></tr></thead>
+                            <tbody id="adminAccountsTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="previousAccountsPage" class="secondary-btn" type="button">Previous</button>
+                        <span id="accountsPagination" aria-live="polite"></span>
+                        <button id="nextAccountsPage" class="secondary-btn" type="button">Next</button>
+                    </div>
+                </section>
+
+                <section class="admin-section" aria-labelledby="transactionsHeading">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="transactionsHeading">Transaction statements</h2>
+                            <p class="section-description">Filter and export a bounded CSV ledger statement.</p>
+                        </div>
+                    </div>
+                    <form id="transactionFilters" class="filter-form">
+                        <label for="transactionFrom">From
+                            <input id="transactionFrom" name="from" type="date">
+                        </label>
+                        <label for="transactionTo">To
+                            <input id="transactionTo" name="to" type="date">
+                        </label>
+                        <label for="transactionTypeFilter">Type
+                            <select id="transactionTypeFilter" name="type">
+                                <option value="">All types</option>
+                                <option value="transfer">Transfer</option>
+                                <option value="deposit">Deposit</option>
+                                <option value="interest">Interest</option>
+                                <option value="withdrawal">Withdrawal</option>
+                            </select>
+                        </label>
+                        <label for="transactionAccountNumber">Account number
+                            <input id="transactionAccountNumber" name="accountNumber" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="Optional">
+                        </label>
+                        <button id="exportTransactionsButton" type="submit">Export CSV</button>
+                    </form>
+                    <p id="transactionExportStatus" class="table-status" role="status" aria-live="polite"></p>
+                </section>
             </div>
         </main>
     </div>

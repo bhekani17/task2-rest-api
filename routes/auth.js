@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const express = require('express');
+const { detectProfilePhotoType } = require('../lib/profile-photo');
 
 function registerAuthRoutes(app, dependencies) {
   const {
@@ -251,7 +253,188 @@ function registerAuthRoutes(app, dependencies) {
       reportServerError(res, 'Sign out', error);
     }
   });
-  
+
+  app.patch('/api/auth/profile', requireAuth, async (req, res) => {
+    const body = req.body || {};
+    const allowedFields = new Set(['name', 'email', 'currentPassword']);
+    if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+      return res.status(400).json({ error: 'Only profile name and email can be updated here.' });
+    }
+
+    const updates = {};
+    if (Object.hasOwn(body, 'name')) {
+      if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 100) {
+        return res.status(400).json({ error: 'Name must be between 1 and 100 characters.' });
+      }
+      updates.name = body.name.trim();
+    }
+    if (Object.hasOwn(body, 'email')) {
+      if (typeof body.email !== 'string' || body.email.trim().length > 254 ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+        return res.status(400).json({ error: 'Provide a valid email address.' });
+      }
+      updates.email = body.email.trim().toLowerCase();
+    }
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ error: 'Provide a name or email to update.' });
+    }
+
+    try {
+      const currentUser = await User.findById(req.authUser._id).select('+password +passwordHash');
+      if (!currentUser || currentUser.status !== 'active') {
+        return res.status(401).json({ error: 'Your active user profile could not be found.' });
+      }
+      if (updates.email && updates.email !== currentUser.email) {
+        if (typeof body.currentPassword !== 'string' || !body.currentPassword ||
+            body.currentPassword.length > 128 ||
+            !await verifyPassword(body.currentPassword, currentUser.passwordHash, currentUser.password)) {
+          return res.status(401).json({ error: 'Enter your current password to change your email.' });
+        }
+      }
+
+      const result = await User.updateOne(
+        { _id: currentUser._id, status: 'active' },
+        { $set: updates }
+      );
+      if (result.matchedCount !== 1) {
+        return res.status(409).json({ error: 'Your profile changed or became unavailable. Reload and try again.' });
+      }
+      const updatedUser = await User.findById(currentUser._id);
+      res.status(200).json({ message: 'Profile updated.', user: publicUser(updatedUser) });
+    } catch (error) {
+      if (error.code === 11000) {
+        return res.status(409).json({ error: 'A user with this email already exists.' });
+      }
+      reportServerError(res, 'Profile update', error);
+    }
+  });
+
+  app.put('/api/auth/password', requireAuth, async (req, res) => {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > 128 ||
+        typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 128) {
+      return res.status(400).json({ error: 'Enter your current password and a new password of 12 to 128 characters.' });
+    }
+
+    const token = readCookie(req, SESSION_COOKIE);
+    if (!token) return res.status(401).json({ error: 'Sign in again before changing your password.' });
+
+    let session;
+    try {
+      const newPasswordHash = await hashPassword(newPassword);
+      const currentTokenHash = hashToken(token);
+      session = await mongoose.startSession();
+      await session.withTransaction(async () => {
+        const currentUser = await User.findOne({
+          _id: req.authUser._id,
+          status: 'active'
+        }).select('+password +passwordHash').session(session);
+        if (!currentUser ||
+            !await verifyPassword(currentPassword, currentUser.passwordHash, currentUser.password)) {
+          const error = new Error('Current password is incorrect.');
+          error.statusCode = 401;
+          throw error;
+        }
+        if (await verifyPassword(newPassword, currentUser.passwordHash, currentUser.password)) {
+          const error = new Error('Choose a new password that is different from your current password.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const updated = await User.updateOne(
+          { _id: currentUser._id, status: 'active' },
+          { $set: { passwordHash: newPasswordHash }, $unset: { password: 1 } },
+          { session }
+        );
+        if (updated.matchedCount !== 1) {
+          throw new Error('The active user profile could not be updated.');
+        }
+        await Session.deleteMany(
+          { userId: currentUser._id, tokenHash: { $ne: currentTokenHash } },
+          { session }
+        );
+      });
+      res.status(200).json({
+        message: 'Password changed. Other active sessions have been signed out.'
+      });
+    } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+      if (error.code === 20 || /transaction numbers are only allowed/i.test(String(error?.message || ''))) {
+        return res.status(503).json({
+          error: 'Password changes require MongoDB running as a replica set.'
+        });
+      }
+      reportServerError(res, 'Password change', error);
+    } finally {
+      if (session) await session.endSession();
+    }
+  });
+
+  const profilePhotoParser = express.raw({
+    type: ['image/jpeg', 'image/png', 'image/webp'],
+    limit: '2mb'
+  });
+  app.put('/api/auth/profile/photo', requireAuth, (req, res, next) => {
+    profilePhotoParser(req, res, (error) => {
+      if (!error) return next();
+      if (error.type === 'entity.too.large') {
+        return res.status(413).json({ error: 'Profile photos must be 2 MB or smaller.' });
+      }
+      return res.status(400).json({ error: 'Profile photo upload could not be read.' });
+    });
+  }, async (req, res) => {
+    const contentType = req.get('Content-Type')?.split(';')[0].trim().toLowerCase();
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+      return res.status(415).json({ error: 'Upload a JPEG, PNG, or WebP image.' });
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'Choose a profile photo to upload.' });
+    }
+    const detectedType = detectProfilePhotoType(req.body);
+    if (detectedType !== contentType) {
+      return res.status(400).json({ error: 'The image content does not match its file type.' });
+    }
+
+    try {
+      await User.updateOne(
+        { _id: req.authUser._id, status: 'active' },
+        { $set: { profilePhoto: req.body, profilePhotoContentType: detectedType } }
+      );
+      res.status(200).json({ message: 'Profile photo updated.' });
+    } catch (error) {
+      reportServerError(res, 'Profile photo update', error);
+    }
+  });
+
+  app.get('/api/auth/profile/photo', requireAuth, async (req, res) => {
+    try {
+      const user = await User.findById(req.authUser._id).select('+profilePhoto profilePhotoContentType');
+      if (!user?.profilePhoto || !user.profilePhotoContentType) {
+        return res.status(404).json({ error: 'No profile photo has been uploaded.' });
+      }
+      res.set({
+        'Content-Type': user.profilePhotoContentType,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      res.status(200).send(user.profilePhoto);
+    } catch (error) {
+      reportServerError(res, 'Profile photo retrieval', error);
+    }
+  });
+
+  app.delete('/api/auth/profile/photo', requireAuth, async (req, res) => {
+    try {
+      await User.updateOne(
+        { _id: req.authUser._id },
+        { $unset: { profilePhoto: 1, profilePhotoContentType: 1 } }
+      );
+      res.status(200).json({ message: 'Profile photo removed.' });
+    } catch (error) {
+      reportServerError(res, 'Profile photo removal', error);
+    }
+  });
+
   app.get('/api/auth/me', requireAuth, (req, res) => {
     res.status(200).json({
       user: publicUser(req.authUser),

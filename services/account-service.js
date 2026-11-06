@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 function createAccountService(dependencies) {
   const {
     User, Account, Counter, Transaction, Session, LoginAttempt, Activation,
+    StockPortfolio, StockTrade,
     mongoose, io, SYSTEM_ACTOR_USER_ID,
     MAX_ACCOUNTS_PER_USER
   } = dependencies;
@@ -52,6 +53,8 @@ function createAccountService(dependencies) {
     await Session.init();
     await LoginAttempt.init();
     await Activation.init();
+    await StockPortfolio?.init();
+    await StockTrade?.init();
     await User.updateMany({ role: { $exists: false } }, { $set: { role: 'customer' } });
     await User.updateMany({ status: { $exists: false } }, { $set: { status: 'active' } });
   

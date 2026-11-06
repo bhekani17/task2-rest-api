@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bank | Simulated Investments</title>
+    <link rel="icon" type="image/png" href="/images/bg.png">
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body class="dashboard-page investments-page">
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div class="brand"><img class="brand-logo" src="/images/bg.png" alt="Sky Bank"></div>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <div class="nav-group">
+                    <span class="nav-section-title">Workspace</span>
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                    <a class="nav-link" href="/profile">My profile</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Banking</span>
+                    <a class="nav-link" href="/accounts">Accounts</a>
+                    <a class="nav-link" href="/transfers">Transfers</a>
+                    <a class="nav-link" href="/transactions">Transactions</a>
+                    <a class="nav-link active" href="/investments" aria-current="page">Investments</a>
+                </div>
+                <button id="logoutButton" class="nav-link" type="button">Sign out</button>
+            </nav>
+        </aside>
+        <main class="main">
+            <header class="topbar">
+                <h1 class="page-title">Simulated investments</h1>
+                <button id="themeToggle" class="theme-toggle" type="button">Dark</button>
+            </header>
+            <p class="simulation-notice">
+                Live JSE quotes are provided by Mansa. Trades are simulations: the selected bank account is debited or credited, but no real shares are bought or sold and no brokerage is involved.
+            </p>
+            <p id="investmentStatus" class="filter-status" role="status" aria-live="polite">Loading investment portfolio...</p>
+            <section class="investment-summary" aria-label="Simulated portfolio summary">
+                <article class="stat-card"><div class="stat-label">Position value</div><div id="marketValue" class="stat-value">—</div></article>
+                <article class="stat-card"><div class="stat-label">Cost basis</div><div id="costBasis" class="stat-value">—</div></article>
+                <article class="stat-card"><div class="stat-label">Unrealized gain / loss</div><div id="portfolioGainLoss" class="stat-value">—</div></article>
+            </section>
+            <section class="panel-card investment-panel" aria-labelledby="marketHeading">
+                <div class="dashboard-header">
+                    <h2 id="marketHeading">JSE market</h2>
+                    <span id="quoteNote" class="panel-description"></span>
+                </div>
+                <label for="tradeAccount">Trade using an active account
+                    <select id="tradeAccount" name="tradeAccount">
+                        <option value="">Loading accounts...</option>
+                    </select>
+                </label>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Ticker</th><th>Company</th><th>Live quote</th><th>Your simulated shares</th><th>Trade</th></tr></thead>
+                        <tbody id="stockTable"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="panel-card investment-panel" aria-labelledby="tradeHistoryHeading">
+                <h2 id="tradeHistoryHeading">Recent simulated trades</h2>
+                <div class="table-wrap">
+                    <table>
+                    <thead><tr><th>Date</th><th>Action</th><th>Ticker</th><th>Shares</th><th>Quote</th><th>Total</th><th>Bank account</th></tr></thead>
+                        <tbody id="tradeHistory"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/js/investments.js"></script>
+</body>
+</html>

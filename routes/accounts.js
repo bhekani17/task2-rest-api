@@ -4,12 +4,54 @@ function registerAccountRoutes(app, dependencies) {
     currentMonthKey, nextAccountNumber, MAX_ACCOUNTS_PER_USER, accountLimitReached
   } = dependencies;
 
-  // GET /api/users returns the complete list of users in JSON format.
-  // Only administrators may retrieve the customer directory.
+  // Query parameters opt into a paginated customer directory while preserving the original array response.
   app.get('/api/users', requireAdmin, async (req, res) => {
     try {
-      const users = await User.find();
-      res.status(200).json(users.map(publicUser));
+      const { search, status, page, limit } = req.query;
+      const isPaginated = ['search', 'status', 'page', 'limit'].some((key) => req.query[key] !== undefined);
+      if ([search, status, page, limit].some((value) => value !== undefined && typeof value !== 'string')) {
+        return res.status(400).json({ error: 'Customer filters must be single values.' });
+      }
+      if (typeof search === 'string' && search.trim().length > 80) {
+        return res.status(400).json({ error: 'Customer search must be 80 characters or fewer.' });
+      }
+      if (status !== undefined && !['all', 'pending', 'active', 'closed'].includes(status)) {
+        return res.status(400).json({ error: 'Customer status filter is invalid.' });
+      }
+      const pageNumber = page === undefined ? 1 : Number(page);
+      const pageSize = limit === undefined ? 10 : Number(limit);
+      if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 10000 ||
+          !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+        return res.status(400).json({ error: 'Page must be between 1 and 10,000 and page size between 1 and 100.' });
+      }
+
+      const filter = {};
+      if (isPaginated) filter.role = 'customer';
+      if (status && status !== 'all') filter.status = status;
+      if (search?.trim()) {
+        const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchTerms = [
+          { name: { $regex: escapedSearch, $options: 'i' } },
+          { email: { $regex: escapedSearch, $options: 'i' } }
+        ];
+        if (/^\d{1,5}$/.test(search.trim())) searchTerms.push({ userId: Number(search.trim()) });
+        filter.$or = searchTerms;
+      }
+
+      const usersQuery = User.find(filter).sort({ userId: 1 });
+      if (isPaginated) usersQuery.skip((pageNumber - 1) * pageSize).limit(pageSize);
+      const [users, total] = await Promise.all([
+        usersQuery.lean(),
+        isPaginated ? User.countDocuments(filter) : null
+      ]);
+      if (!isPaginated) return res.status(200).json(users.map(publicUser));
+      res.status(200).json({
+        users: users.map(publicUser),
+        page: pageNumber,
+        limit: pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      });
     } catch (error) {
       reportServerError(res, 'Customer listing', error);
     }

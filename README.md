@@ -59,15 +59,17 @@ This repository is not a production banking system. Production use requires an a
 - `routes/` – Public page routes and API route groups for authentication, accounts, transactions, and administration
 - `middleware/` – Authentication/authorization and API readiness/origin checks
 - `models/` – Mongoose schemas and model exports
-- `services/` – Account lifecycle/interest and transaction parsing/filtering/CSV logic
+- `services/` – Account lifecycle/interest, transaction parsing, and Mansa JSE market-data access
 - `lib/` – Session handling, password utilities, and shared HTTP helpers
 - `client/index.html` – Dashboard overview with account and recent-activity summaries
+- `client/profile.html` – Self-service personal details, profile photo, and password settings
 - `client/accounts.html` – Account list, balances, and account opening
 - `client/transfers.html` – Internal transfers and demo deposits
 - `client/transactions.html` – Searchable transaction history and CSV statements
+- `client/investments.html` – Simulated stock portfolio using live JSE quotes and customer-selected bank accounts
 - `client/css/` and `client/js/` – Customer page styles and browser behavior
 - `client/welcome.html` – Public landing page for signed-out visitors
-- `admin/create.html` – Administrator page for creating customer accounts
+- `admin/create.html` – Administrator dashboard for customer search/CRUD, account management, aggregate statistics, and filtered ledger exports
 - `admin/css/` and `admin/js/` – Administrator page styles and browser behavior
 - `client/activate.html` – Customer password setup from a one-time activation link
 - `client/login.html` – Login page for existing users
@@ -127,7 +129,7 @@ Then open the browser at:
 http://localhost:5000
 ```
 
-Customer pages (`/dashboard`) require an active session. `/create` requires the `admin` role; the activation page is reachable only with a valid one-time link.
+Customer pages (`/dashboard`) require an active session. `/admin` (also available at `/create`) requires the `admin` role; the activation page is reachable only with a valid one-time link.
 
 The app opens on the welcome page. Signed-out users can choose sign-in or registration; active sessions are sent directly to the dashboard. You can also visit:
 
@@ -136,10 +138,16 @@ http://localhost:5000/
 http://localhost:5000/login
 http://localhost:5000/register
 http://localhost:5000/dashboard
-http://localhost:5000/create
+http://localhost:5000/admin
 ```
 
 The dashboard displays the signed-in customer's account and transaction history. Registration opens an account; administrators can create pending accounts and share the generated activation link securely.
+
+The admin area at `/admin` supports customer search and pagination, account listing and zero-balance account closure, bank-wide summary statistics, and filtered CSV transaction exports. Customers can upload a JPEG, PNG, or WebP profile photo (up to 2 MB) from the dashboard.
+
+`/investments` uses the latest available JSE quotes from Mansa (`https://mansaapi.com`), which may be up to 30 minutes old, and requires `MANSA_API_KEY` in the local environment. Add the rotated key to your local `.env` (see `.env.example`); never commit the key or put it in browser code. Successful stock-list responses are cached for 30 minutes to respect provider freshness and rate limits, and provider errors are reported rather than replaced with demo prices. Quotes are in ZAR.
+
+Investment trades are simulations, not brokerage orders: buying debits the customer's selected active bank account, selling credits it, and both operations atomically update the bank ledger and a separate simulated share portfolio. Earlier virtual-cash holdings are cleared on first access and cannot be sold for bank-account funds. The app does not acquire real shares or provide investment advice. Trade requests require an `Idempotency-Key`; account ownership, available funds, share quantities, and MongoDB transaction support are checked server-side.
 
 Internal transfers require MongoDB Atlas or a local MongoDB replica set because balance changes and ledger entries are committed in database transactions.
 
@@ -199,7 +207,7 @@ Existing single-account customers are migrated to a cheque/current account when 
 
 ### Compatibility Customer Endpoints
 
-The existing `GET`, `PUT`, and `DELETE /api/users/:id` endpoints remain available for the original CRUD exercise.
+Administrators can create customers with `POST /api/users`, read the directory with `GET /api/users` or a customer with `GET /api/users/:id`, update customer details with `PUT /api/users/:id`, and close a customer with `DELETE /api/users/:id`. Customer closure is a soft delete: all account balances must be zero before closure, and the customer and account records remain in the ledger history. These operations are available in the `/admin` customer-management page.
 
 ### Authentication Endpoints
 
@@ -207,6 +215,9 @@ The existing `GET`, `PUT`, and `DELETE /api/users/:id` endpoints remain availabl
 - `POST /api/auth/login` – Authenticate and set an HttpOnly JWT cookie
 - `POST /api/auth/activate` – Set a password and activate an administrator-created account
 - `GET /api/auth/me` – Return the signed-in user's account summary
+- `PATCH /api/auth/profile` – Update the signed-in user's name and verified email
+- `PUT /api/auth/password` – Change password and revoke other active sessions
+- `PUT /api/auth/profile/photo`, `GET /api/auth/profile/photo`, `DELETE /api/auth/profile/photo` – Manage profile photo
 - `POST /api/auth/logout` – Revoke the current session
 
 JWTs expire after 12 hours and are stored in HttpOnly, SameSite=Strict cookies (Secure in production). The server also stores a hash of each token in MongoDB so logout and account closure revoke sessions. Login attempts are limited per client IP. Existing plaintext and scrypt passwords are migrated to bcrypt after successful login. Existing users may need to sign in again after upgrading because pre-upgrade session cookies are invalidated.
@@ -219,7 +230,20 @@ JWTs expire after 12 hours and are stored in HttpOnly, SameSite=Strict cookies (
 - `GET /api/accounts/:accountNumber/transactions` – List an account's latest 100 ledger entries
 - `POST /api/transactions` – Transfer funds or make a demo deposit
 
-Transaction search accepts optional `from`, `to`, `type`, `accountNumber`, `page`, and `limit` query parameters. Types include transfers, demo deposits, withdrawals, and savings interest. Dates are inclusive UTC calendar dates; JSON results use pages of 25 entries by default (up to 100), with total/page metadata in response headers. Customer requests are always restricted to their own accounts, even when filters are supplied. CSV exports use the same filters and ownership checks, are capped at 5,000 rows, and require both start and end dates if account history exceeds that cap. CSV descriptions are escaped against spreadsheet formula injection.
+Only authenticated customers may create transactions. Administrator sessions are read-only for transaction history and account balances; transaction creation requests return `403`.
+
+### Administration and Practice Investing
+
+- `GET /api/admin/summary` – Bank-wide customer, account, balance, and ledger counts (administrator)
+- `GET /api/admin/accounts` – Searchable and paginated account directory (administrator)
+- `DELETE /api/admin/accounts/:accountNumber` – Close a zero-balance account (administrator)
+- `GET /api/stocks` – Read cached live JSE quotes from Mansa
+- `GET /api/investments` – Read the signed-in customer's simulated holdings, active accounts, and trade history
+- `POST /api/investments/trades` – Record an idempotent simulated buy or sell funded by a selected active bank account
+
+The customer directory `GET /api/users` accepts `search`, `status`, `page`, and `limit` for its paginated response. Requests without these query parameters retain the original array response.
+
+Transaction search accepts optional `from`, `to`, `type`, `accountNumber`, `page`, and `limit` query parameters. Types include transfers, demo deposits, withdrawals, savings interest, stock purchases, and stock sales. Dates are inclusive UTC calendar dates; JSON results use pages of 25 entries by default (up to 100), with total/page metadata in response headers. Customer requests are always restricted to their own accounts, even when filters are supplied. CSV exports use the same filters and ownership checks, are capped at 5,000 rows, and require both start and end dates if account history exceeds that cap. CSV descriptions are escaped against spreadsheet formula injection.
 
 ## Real-Time Notifications
 
