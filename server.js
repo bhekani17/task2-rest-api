@@ -14,7 +14,9 @@ const { createApiReadinessMiddleware } = require('./middleware/api-readiness');
 const { reportServerError, publicUser } = require('./lib/http');
 const {
   MAX_ACCOUNTS_PER_USER, User, Account, Session, LoginAttempt, Activation,
-  Transaction, Counter, StockPortfolio, StockTrade
+  Transaction, Counter, StockPortfolio, StockTrade,
+  Beneficiary, ScheduledTransfer, PaymentRequest, VirtualCard,
+  SavingsGoal, Dispute, AuditLog, Notification
 } = require('./models');
 
 // Create the Express application and choose the port to listen on.
@@ -31,6 +33,9 @@ const SYSTEM_ACTOR_USER_ID = new mongoose.Types.ObjectId('0000000000000000000000
 let databaseReady = false;
 
 app.disable('x-powered-by');
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -126,6 +131,8 @@ const { createAccountService } = require('./services/account-service');
 const accountService = createAccountService({
   User, Account, Counter, Transaction, Session, LoginAttempt, Activation,
   StockPortfolio, StockTrade,
+  Beneficiary, ScheduledTransfer, PaymentRequest, VirtualCard,
+  SavingsGoal, Dispute, AuditLog, Notification,
   mongoose, io, SYSTEM_ACTOR_USER_ID,
   MAX_ACCOUNTS_PER_USER
 });
@@ -142,6 +149,7 @@ const { registerTransactionRoutes } = require('./routes/transactions');
 const { registerAdminRoutes } = require('./routes/admin');
 const { registerPageRoutes } = require('./routes/pages');
 const { registerInvestmentRoutes } = require('./routes/investments');
+const { registerBankingFeatureRoutes } = require('./routes/banking-features');
 
 registerPageRoutes(app, {
   loadSessionUser,
@@ -156,7 +164,7 @@ registerPageRoutes(app, {
 app.use('/api', createApiReadinessMiddleware({ isDatabaseReady: () => databaseReady }));
 
 registerAuthRoutes(app, {
-  requireAuth, requireAdmin, User, Account, Session, Activation,
+  requireAuth, requireAdmin, User, Account, Session, Activation, AuditLog,
   incrementAuthAttempts, clearAuthAttempts, nextUserId, nextAccountNumber,
   currentMonthKey, hashToken, readCookie, clearSessionCookie, setSessionCookie,
   publicUser, reportServerError, hashPassword, verifyPassword, needsPasswordRehash,
@@ -167,7 +175,7 @@ registerAccountRoutes(app, {
   nextAccountNumber, MAX_ACCOUNTS_PER_USER, accountLimitReached
 });
 registerTransactionRoutes(app, {
-  User, Account, Transaction, reportServerError, mongoose, io,
+  User, Account, Transaction, Notification, reportServerError, mongoose, io,
   ownedAccountNumbers, buildTransactionFilter, transactionCsv,
   parseTransactionPagination, transactionResponse, parseAmountMinor
 });
@@ -176,6 +184,26 @@ registerInvestmentRoutes(app, {
 });
 registerAdminRoutes(app, {
   requireAdmin, User, Account, Session, Transaction, mongoose, publicUser, reportServerError
+});
+const { processDueScheduledTransfers } = registerBankingFeatureRoutes(app, {
+  requireAdmin,
+  User,
+  Account,
+  Transaction,
+  Beneficiary,
+  ScheduledTransfer,
+  PaymentRequest,
+  VirtualCard,
+  SavingsGoal,
+  Dispute,
+  AuditLog,
+  Notification,
+  mongoose,
+  io,
+  SYSTEM_ACTOR_USER_ID,
+  parseAmountMinor,
+  transactionResponse,
+  reportServerError
 });
 
 app.use((error, req, res, next) => {
@@ -200,6 +228,7 @@ async function startServer() {
         : '';
       console.error(`Monthly savings interest failed: ${error?.name || 'Error'}${detail ? `: ${detail}` : ''}`);
     });
+    processDueScheduledTransfers().catch(() => {});
   }, 60 * 60 * 1000);
   interestTimer.unref();
   creditMonthlySavingsInterest().catch((error) => {
@@ -208,6 +237,7 @@ async function startServer() {
       : '';
     console.error(`Monthly savings interest failed: ${error?.name || 'Error'}${detail ? `: ${detail}` : ''}`);
   });
+  processDueScheduledTransfers().catch(() => {});
   return httpServer.listen(PORT, () => {
     console.log(`Sky Bank server running on port ${PORT}.`);
   });

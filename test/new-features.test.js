@@ -5,6 +5,8 @@ const {
   calculateHoldingsTrade, createMarketClient, extractStock, extractStockList
 } = require('../services/stock-market');
 const { registerInvestmentRoutes } = require('../routes/investments');
+const { registerBankingFeatureRoutes, advanceScheduleDate } = require('../routes/banking-features');
+const { parseAmountMinor, transactionResponse } = require('../services/transaction-service');
 
 const stock = {
   ticker: 'FSR',
@@ -387,4 +389,254 @@ test('bank-funded simulated trades update balances and both ledgers once per ide
   assert.equal(insufficient.statusCode, 409);
   assert.match(insufficient.body.error, /Insufficient funds/);
   assert.equal(bankAccount.balanceMinor, 992_700);
+});
+
+test('banking features: beneficiaries, virtual cards, savings goals, payment requests, disputes, freeze, and notifications', async () => {
+  const routes = new Map();
+  const app = {
+    get(path, ...handlers) { routes.set(`GET ${path}`, handlers); },
+    post(path, ...handlers) { routes.set(`POST ${path}`, handlers); },
+    patch(path, ...handlers) { routes.set(`PATCH ${path}`, handlers); },
+    delete(path, ...handlers) { routes.set(`DELETE ${path}`, handlers); }
+  };
+
+  const accounts = new Map([
+    ['1000000001', { ownerUserId: 'user-1', accountNumber: '1000000001', accountType: 'cheque', status: 'active', balanceMinor: 500_000 }],
+    ['1000000002', { ownerUserId: 'user-2', accountNumber: '1000000002', accountType: 'savings', status: 'active', balanceMinor: 200_000 }]
+  ]);
+  const beneficiaries = [];
+  const cards = [];
+  const goals = [];
+  const paymentRequests = [];
+  const disputes = [];
+  const notifications = [];
+  const transactions = [];
+
+  const Account = {
+    exists: async ({ accountNumber, ownerUserId, status }) => {
+      const acc = accounts.get(accountNumber);
+      if (!acc) return false;
+      if (ownerUserId && acc.ownerUserId !== ownerUserId) return false;
+      if (status && acc.status !== status) return false;
+      return true;
+    },
+    findOne: ({ accountNumber }) => ({
+      populate: () => ({
+        lean: async () => {
+          const acc = accounts.get(accountNumber);
+          return acc ? { ...acc, ownerUserId: { _id: acc.ownerUserId, name: acc.ownerUserId === 'user-2' ? 'Grace Hopper' : 'Ada Lovelace' } } : null;
+        }
+      }),
+      lean: async () => accounts.get(accountNumber) || null
+    }),
+    find: ({ ownerUserId }) => ({
+      select: () => ({
+        lean: async () => [...accounts.values()].filter((a) => a.ownerUserId === ownerUserId)
+      })
+    }),
+    findOneAndUpdate: (filter, update) => {
+      const acc = accounts.get(filter.accountNumber);
+      if (!acc) return null;
+      if (filter.balanceMinor?.$gte !== undefined && acc.balanceMinor < filter.balanceMinor.$gte) return null;
+      if (update.$inc?.balanceMinor) acc.balanceMinor += update.$inc.balanceMinor;
+      if (update.$set?.status) acc.status = update.$set.status;
+      return { ...acc };
+    }
+  };
+
+  registerBankingFeatureRoutes(app, {
+    requireAdmin: (req, res, next) => (req.authUser?.role === 'admin' ? next() : res.status(403).json({ error: 'Forbidden' })),
+    User: { updateOne: async () => ({ matchedCount: 1 }) },
+    Account,
+    Transaction: {
+      findById: (id) => ({
+        session: async () => transactions.find((t) => String(t._id) === String(id)) || null,
+        lean: async () => transactions.find((t) => String(t._id) === String(id)) || null
+      }),
+      create: async ([tx]) => {
+        const nextHex = String(90 + transactions.length).padStart(2, '0');
+        const saved = { _id: `65f0000000000000000000${nextHex}`, createdAt: new Date(), ...tx };
+        transactions.push(saved);
+        return [saved];
+      }
+    },
+    Beneficiary: {
+      find: () => ({ sort: () => ({ lean: async () => beneficiaries }) }),
+      create: async (doc) => {
+        const saved = { _id: '65f000000000000000000001', createdAt: new Date(), ...doc };
+        beneficiaries.push(saved);
+        return saved;
+      },
+      deleteOne: async () => ({ deletedCount: 1 })
+    },
+    ScheduledTransfer: {},
+    PaymentRequest: {
+      create: async (doc) => {
+        const saved = { _id: '65f000000000000000000002', createdAt: new Date(), ...doc };
+        paymentRequests.push(saved);
+        return saved;
+      },
+      findById: (id) => ({ lean: async () => paymentRequests.find((r) => String(r._id) === String(id)) || null }),
+      findOneAndUpdate: () => paymentRequests[0],
+      updateOne: async () => ({ modifiedCount: 1 })
+    },
+    VirtualCard: {
+      countDocuments: async () => cards.length,
+      create: async (doc) => {
+        const saved = { _id: '65f000000000000000000003', createdAt: new Date(), ...doc };
+        cards.push(saved);
+        return saved;
+      },
+      findOneAndUpdate: async (_filter, update) => {
+        Object.assign(cards[0], update.$set);
+        return cards[0];
+      }
+    },
+    SavingsGoal: {
+      create: async (doc) => {
+        const saved = { _id: '65f000000000000000000004', createdAt: new Date(), ...doc };
+        goals.push(saved);
+        return saved;
+      },
+      findOne: () => ({ session: async () => goals[0] || null }),
+      findOneAndUpdate: async (_filter, update) => {
+        if (update.$inc?.currentMinor) goals[0].currentMinor += update.$inc.currentMinor;
+        if (update.$set?.status) goals[0].status = update.$set.status;
+        return goals[0];
+      }
+    },
+    Dispute: {
+      findOne: ({ _id }) => ({
+        lean: async () => null,
+        session: async () => disputes.find((d) => String(d._id) === String(_id)) || null
+      }),
+      create: async (doc) => {
+        const saved = { _id: '65f000000000000000000005', createdAt: new Date(), ...doc };
+        disputes.push(saved);
+        return saved;
+      },
+      findOneAndUpdate: async (_filter, update) => {
+        Object.assign(disputes[0], update.$set);
+        return disputes[0];
+      }
+    },
+    AuditLog: { create: async () => {} },
+    Notification: {
+      create: async (doc) => { notifications.push({ _id: 'notif-1', createdAt: new Date(), ...doc }); },
+      find: () => ({ sort: () => ({ limit: () => ({ lean: async () => notifications }) }) }),
+      countDocuments: async () => notifications.filter((n) => !n.read).length,
+      updateMany: async () => { for (const n of notifications) n.read = true; }
+    },
+    mongoose: {
+      startSession: async () => ({
+        withTransaction: async (fn) => fn(),
+        endSession: async () => {}
+      })
+    },
+    io: { to: () => ({ emit: () => {} }) },
+    SYSTEM_ACTOR_USER_ID: 'system',
+    parseAmountMinor,
+    transactionResponse,
+    reportServerError: (res, _ctx, err) => res.status(500).json({ error: err.message })
+  });
+
+  // 1. Account lookup & beneficiary creation
+  const lookupRes = await callRoute(routes.get('GET /api/accounts/lookup/:accountNumber'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    params: { accountNumber: '1000000002' }
+  });
+  assert.equal(lookupRes.statusCode, 200);
+  assert.equal(lookupRes.body.holderName, 'Grace Hopper');
+
+  const benRes = await callRoute(routes.get('POST /api/beneficiaries'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    body: { accountNumber: '1000000002', nickname: 'Grace', defaultReference: 'Rent' }
+  });
+  assert.equal(benRes.statusCode, 201);
+  assert.equal(benRes.body.beneficiary.name, 'Grace Hopper');
+
+  // 2. Virtual card issue & freeze
+  const cardRes = await callRoute(routes.get('POST /api/cards'), {
+    authUser: { _id: 'user-1', name: 'Ada Lovelace', role: 'customer' },
+    body: { accountNumber: '1000000001', dailyLimit: '15000' }
+  });
+  assert.equal(cardRes.statusCode, 201);
+  assert.equal(cardRes.body.card.dailyLimit, 15000);
+
+  const freezeCardRes = await callRoute(routes.get('PATCH /api/cards/:id'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    params: { id: '65f000000000000000000003' },
+    body: { status: 'frozen', onlinePaymentsEnabled: false }
+  });
+  assert.equal(freezeCardRes.statusCode, 200);
+  assert.equal(freezeCardRes.body.card.status, 'frozen');
+  assert.equal(freezeCardRes.body.card.onlinePaymentsEnabled, false);
+
+  // 3. Savings goal create & allocate
+  const goalRes = await callRoute(routes.get('POST /api/savings-goals'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    body: { accountNumber: '1000000001', name: 'Holiday', targetAmount: '1000' }
+  });
+  assert.equal(goalRes.statusCode, 201);
+
+  const allocRes = await callRoute(routes.get('POST /api/savings-goals/:id/allocate'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    params: { id: '65f000000000000000000004' },
+    body: { direction: 'deposit', amount: '250' }
+  });
+  assert.equal(allocRes.statusCode, 200);
+  assert.equal(allocRes.body.goal.currentAmount, 250);
+  assert.equal(accounts.get('1000000001').balanceMinor, 475_000);
+
+  // 4. Payment request & approval
+  const reqRes = await callRoute(routes.get('POST /api/payment-requests'), {
+    authUser: { _id: 'user-2', name: 'Grace Hopper', role: 'customer' },
+    body: {
+      receivingAccountNumber: '1000000002',
+      payerAccountNumber: '1000000001',
+      amount: '100.00',
+      description: 'Lunch'
+    }
+  });
+  assert.equal(reqRes.statusCode, 201);
+
+  const payRes = await callRoute(routes.get('POST /api/payment-requests/:id/respond'), {
+    authUser: { _id: 'user-1', name: 'Ada Lovelace', role: 'customer' },
+    params: { id: '65f000000000000000000002' },
+    body: { action: 'pay' }
+  });
+  assert.equal(payRes.statusCode, 200);
+  assert.equal(accounts.get('1000000001').balanceMinor, 465_000);
+  assert.equal(accounts.get('1000000002').balanceMinor, 210_000);
+
+  // 5. Dispute submission & admin atomic reversal
+  const latestTransferTx = transactions.find((t) => t.type === 'transfer');
+  const disputeRes = await callRoute(routes.get('POST /api/disputes'), {
+    authUser: { _id: 'user-1', role: 'customer' },
+    body: { transactionId: String(latestTransferTx._id), reason: 'Duplicate payment sent in error' }
+  });
+  assert.equal(disputeRes.statusCode, 201);
+
+  const resolveRes = await callRoute(routes.get('PATCH /api/admin/disputes/:id'), {
+    authUser: { _id: 'admin-1', role: 'admin' },
+    params: { id: '65f000000000000000000005' },
+    body: { status: 'resolved', resolutionNote: 'Reversed', reverseTransaction: true }
+  });
+  assert.equal(resolveRes.statusCode, 200);
+  assert.equal(resolveRes.body.dispute.reversed, true);
+  assert.equal(accounts.get('1000000001').balanceMinor, 475_000);
+  assert.equal(accounts.get('1000000002').balanceMinor, 200_000);
+
+  // 6. Admin account freeze
+  const freezeAccRes = await callRoute(routes.get('PATCH /api/admin/accounts/:accountNumber/status'), {
+    authUser: { _id: 'admin-1', role: 'admin' },
+    params: { accountNumber: '1000000001' },
+    body: { status: 'frozen' }
+  });
+  assert.equal(freezeAccRes.statusCode, 200);
+  assert.equal(accounts.get('1000000001').status, 'frozen');
+
+  // 7. Schedule date advancement helper
+  const weekly = advanceScheduleDate(new Date('2026-11-01T08:00:00.000Z'), 'weekly');
+  assert.equal(weekly.toISOString().slice(0, 10), '2026-11-08');
 });

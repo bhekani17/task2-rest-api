@@ -33,15 +33,56 @@ const statusMessage = document.querySelector('#status');
         const previousPageButton = document.querySelector('#previousPage');
         const nextPageButton = document.querySelector('#nextPage');
         const paginationLabel = document.querySelector('#paginationLabel');
+        const notificationsList = document.querySelector('#notificationsList');
+        const notificationUnreadBadge = document.querySelector('#notificationUnreadBadge');
+        const markNotificationsReadButton = document.querySelector('#markNotificationsReadButton');
+        const notificationsStatus = document.querySelector('#notificationsStatus');
+        const issueCardForm = document.querySelector('#issueCardForm');
+        const cardAccountSelect = document.querySelector('#cardAccountNumber');
+        const virtualCardStatus = document.querySelector('#virtualCardStatus');
+        const virtualCardsList = document.querySelector('#virtualCardsList');
+        const createSavingsGoalForm = document.querySelector('#createSavingsGoalForm');
+        const goalAccountSelect = document.querySelector('#goalAccountNumber');
+        const savingsGoalStatus = document.querySelector('#savingsGoalStatus');
+        const savingsGoalsList = document.querySelector('#savingsGoalsList');
+        const recipientLookupResult = document.querySelector('#recipientLookupResult');
+        const beneficiaryForm = document.querySelector('#beneficiaryForm');
+        const beneficiaryStatus = document.querySelector('#beneficiaryStatus');
+        const beneficiariesList = document.querySelector('#beneficiariesList');
+        const scheduledTransferForm = document.querySelector('#scheduledTransferForm');
+        const scheduledFromAccountSelect = document.querySelector('#scheduledFromAccount');
+        const scheduledNextRunDate = document.querySelector('#scheduledNextRunDate');
+        const scheduledTransferStatus = document.querySelector('#scheduledTransferStatus');
+        const scheduledTransfersList = document.querySelector('#scheduledTransfersList');
+        const paymentRequestForm = document.querySelector('#paymentRequestForm');
+        const requestReceivingAccountSelect = document.querySelector('#requestReceivingAccount');
+        const paymentRequestStatus = document.querySelector('#paymentRequestStatus');
+        const incomingPaymentRequests = document.querySelector('#incomingPaymentRequests');
+        const outgoingPaymentRequests = document.querySelector('#outgoingPaymentRequests');
+        const disputeForm = document.querySelector('#disputeForm');
+        const disputeTransactionIdInput = document.querySelector('#disputeTransactionId');
+        const disputeReasonInput = document.querySelector('#disputeReason');
+        const disputeStatus = document.querySelector('#disputeStatus');
+        const disputesList = document.querySelector('#disputesList');
         const transferKeys = new Map();
         const demoDepositKeys = new Map();
         const socket = io();
         const transactionPageSize = 25;
         const dashboardTransactionLimit = 5;
-        const transactionTypeLabels = { stock_buy: 'Stock purchase', stock_sell: 'Stock sale' };
+        const transactionTypeLabels = {
+            stock_buy: 'Stock purchase',
+            stock_sell: 'Stock sale',
+            goal_allocate: 'Goal deposit',
+            goal_release: 'Goal withdrawal',
+            reversal: 'Dispute reversal'
+        };
         let transactionPage = 1;
         let transactionTotal = 0;
         let accountLimit = 3;
+
+        if (scheduledNextRunDate && !scheduledNextRunDate.value) {
+            scheduledNextRunDate.value = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        }
 
         const formatMoney = (amount) => new Intl.NumberFormat('en-ZA', {
             style: 'currency',
@@ -82,6 +123,14 @@ const statusMessage = document.querySelector('#status');
             if (transactionStatus) transactionStatus.textContent = notification.message;
             loadDashboard();
         });
+        socket.on('notification:new', () => {
+            loadNotifications();
+        });
+        socket.on('paymentRequest:received', (notification) => {
+            if (paymentRequestStatus) paymentRequestStatus.textContent = notification.message;
+            loadPaymentRequests();
+            loadNotifications();
+        });
         socket.on('connect', () => {
             if (realtimeStatus) realtimeStatus.textContent = 'Live updates connected.';
         });
@@ -102,6 +151,10 @@ const statusMessage = document.querySelector('#status');
         function renderAccounts(accounts, ownedAccountCount) {
             accountsTable?.replaceChildren();
             accountSelect?.replaceChildren();
+            cardAccountSelect?.replaceChildren();
+            goalAccountSelect?.replaceChildren();
+            scheduledFromAccountSelect?.replaceChildren();
+            requestReceivingAccountSelect?.replaceChildren();
             const demoDepositAccountSelect = demoDepositForm?.elements.accountNumber;
             demoDepositAccountSelect?.replaceChildren();
             const selectedFilterAccount = filterAccountSelect?.value || '';
@@ -114,7 +167,8 @@ const statusMessage = document.querySelector('#status');
 
                 const owner = document.createElement('span');
                 owner.className = 'account-owner';
-                owner.textContent = `${account.name} · ${account.accountType === 'savings' ? 'Savings' : 'Cheque/current'}`;
+                const statusSuffix = account.status === 'frozen' ? ' · FROZEN' : '';
+                owner.textContent = `${account.name} · ${account.accountType === 'savings' ? 'Savings' : 'Cheque/current'}${statusSuffix}`;
 
                 const number = document.createElement('span');
                 number.className = 'account-number';
@@ -129,8 +183,14 @@ const statusMessage = document.querySelector('#status');
 
                 const label = `${account.accountNumber} — ${account.name} (${formatMoney(account.balance)})`;
                 const typedLabel = `${account.accountType === 'savings' ? 'Savings' : 'Cheque/current'} · ${label}`;
-                accountSelect?.add(new Option(typedLabel, account.accountNumber));
-                demoDepositAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                if (account.status !== 'frozen') {
+                    accountSelect?.add(new Option(typedLabel, account.accountNumber));
+                    demoDepositAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                    cardAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                    goalAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                    scheduledFromAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                    requestReceivingAccountSelect?.add(new Option(typedLabel, account.accountNumber));
+                }
                 filterAccountSelect?.add(new Option(
                     `${account.accountNumber} — ${account.accountType}`,
                     account.accountNumber
@@ -180,14 +240,31 @@ const statusMessage = document.querySelector('#status');
                 createCell(row, transaction.fromAccount || '—');
                 createCell(row, transaction.toAccount || '—');
                 const amountCell = createCell(row, formatMoney(transaction.amount));
-                amountCell.className = ['deposit', 'interest'].includes(transaction.type)
+                amountCell.className = ['deposit', 'interest', 'goal_release', 'reversal'].includes(transaction.type)
                     ? 'amount-positive'
-                    : ['withdrawal', 'stock_buy'].includes(transaction.type) ? 'amount-negative' : '';
-                amountCell.textContent = ['deposit', 'interest'].includes(transaction.type)
+                    : ['withdrawal', 'stock_buy', 'goal_allocate'].includes(transaction.type) ? 'amount-negative' : '';
+                amountCell.textContent = ['deposit', 'interest', 'goal_release', 'reversal'].includes(transaction.type)
                     ? `+${formatMoney(transaction.amount)}`
-                    : ['withdrawal', 'stock_buy'].includes(transaction.type)
+                    : ['withdrawal', 'stock_buy', 'goal_allocate'].includes(transaction.type)
                         ? `-${formatMoney(transaction.amount)}`
                         : ['stock_sell'].includes(transaction.type) ? `+${formatMoney(transaction.amount)}` : formatMoney(transaction.amount);
+                if (disputeForm) {
+                    const actionCell = document.createElement('td');
+                    if (transaction.type === 'transfer') {
+                        const disputeBtn = document.createElement('button');
+                        disputeBtn.type = 'button';
+                        disputeBtn.className = 'filter-button';
+                        disputeBtn.textContent = 'Dispute';
+                        disputeBtn.addEventListener('click', () => {
+                            if (disputeTransactionIdInput) disputeTransactionIdInput.value = transaction.id;
+                            disputeReasonInput?.focus();
+                        });
+                        actionCell.append(disputeBtn);
+                    } else {
+                        actionCell.textContent = '—';
+                    }
+                    row.append(actionCell);
+                }
                 transactionsTable?.append(row);
             }
 
@@ -197,7 +274,7 @@ const statusMessage = document.querySelector('#status');
                     row,
                     transactionFilterForm ? 'No transactions match these filters.' : 'No transactions yet.'
                 );
-                cell.colSpan = 5;
+                cell.colSpan = disputeForm ? 6 : 5;
                 transactionsTable?.append(row);
             }
             transactionTotal = total;
@@ -279,6 +356,8 @@ const statusMessage = document.querySelector('#status');
                         : '';
                 }
                 if (removeProfilePhotoButton) removeProfilePhotoButton.hidden = !profileResult.user.hasProfilePhoto;
+                if (openAccountForm) openAccountForm.hidden = isAdmin;
+                if (accountLimitMessage && isAdmin) accountLimitMessage.hidden = true;
                 if (transactionForm) transactionForm.hidden = isAdmin;
                 if (transactionAccessNotice) transactionAccessNotice.hidden = !isAdmin;
                 for (const link of transferLinks) link.hidden = isAdmin;
@@ -298,7 +377,16 @@ const statusMessage = document.querySelector('#status');
                 if (adminNavigationGroup) adminNavigationGroup.hidden = profileResult.user.role !== 'admin';
                 if (totalAccounts) totalAccounts.textContent = accountsResult.accountCount;
                 if (totalBalance) totalBalance.textContent = formatMoney(accountsResult.totalBalance);
-                await loadTransactions();
+                await Promise.all([
+                    loadTransactions(),
+                    loadNotifications(),
+                    loadVirtualCards(),
+                    loadSavingsGoals(),
+                    loadBeneficiaries(),
+                    loadScheduledTransfers(),
+                    loadPaymentRequests(),
+                    loadDisputes()
+                ]);
             } catch (error) {
                 if (statusMessage) statusMessage.textContent = error.message;
             }
@@ -520,6 +608,617 @@ const statusMessage = document.querySelector('#status');
                 await loadDashboard();
             } catch (error) {
                 if (demoDepositStatus) demoDepositStatus.textContent = error.message;
+            }
+        });
+
+        // Notifications Inbox
+        async function loadNotifications() {
+            if (!notificationsList) return;
+            try {
+                const response = await fetch('/api/notifications');
+                if (!response.ok) return;
+                const result = await response.json();
+                notificationsList.replaceChildren();
+                const unread = result.unreadCount || 0;
+                if (notificationUnreadBadge) {
+                    notificationUnreadBadge.hidden = unread === 0;
+                    notificationUnreadBadge.textContent = `${unread} unread`;
+                }
+                if (markNotificationsReadButton) {
+                    markNotificationsReadButton.disabled = unread === 0;
+                }
+                const items = result.notifications || [];
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No notifications yet.';
+                    notificationsList.append(empty);
+                    return;
+                }
+                for (const item of items) {
+                    const card = document.createElement('article');
+                    card.className = `account-card ${item.read ? '' : 'notification-unread'}`.trim();
+                    const meta = document.createElement('span');
+                    meta.className = 'account-owner';
+                    meta.textContent = `${new Date(item.createdAt).toLocaleString()} · ${item.read ? 'Read' : 'New'}`;
+                    const msg = document.createElement('span');
+                    msg.className = 'account-number';
+                    msg.textContent = item.message;
+                    card.append(meta, msg);
+                    notificationsList.append(card);
+                }
+            } catch {
+                // Ignore background notification errors
+            }
+        }
+
+        markNotificationsReadButton?.addEventListener('click', async () => {
+            markNotificationsReadButton.disabled = true;
+            try {
+                const response = await fetch('/api/notifications/read-all', { method: 'POST' });
+                if (response.ok) {
+                    if (notificationsStatus) notificationsStatus.textContent = 'All notifications marked as read.';
+                    await loadNotifications();
+                }
+            } finally {
+                markNotificationsReadButton.disabled = false;
+            }
+        });
+
+        // Recipient Account Lookup on Transfers Page
+        destinationSelect?.addEventListener('input', async () => {
+            const value = destinationSelect.value.trim();
+            if (!recipientLookupResult) return;
+            if (!/^\d{10}$/.test(value)) {
+                recipientLookupResult.hidden = true;
+                recipientLookupResult.textContent = '';
+                return;
+            }
+            recipientLookupResult.hidden = false;
+            recipientLookupResult.textContent = 'Verifying recipient account...';
+            try {
+                const response = await fetch(`/api/accounts/lookup/${value}`);
+                const result = await response.json();
+                if (!response.ok) {
+                    recipientLookupResult.textContent = result.error || 'Account not found.';
+                    return;
+                }
+                recipientLookupResult.textContent = `Verified recipient: ${result.holderName} (${result.accountType === 'savings' ? 'Savings' : 'Cheque/current'})`;
+            } catch {
+                recipientLookupResult.textContent = 'Could not verify recipient right now.';
+            }
+        });
+
+        // Saved Beneficiaries
+        async function loadBeneficiaries() {
+            if (!beneficiariesList) return;
+            try {
+                const response = await fetch('/api/beneficiaries');
+                if (!response.ok) return;
+                const result = await response.json();
+                beneficiariesList.replaceChildren();
+                const items = result.beneficiaries || [];
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No saved beneficiaries yet.';
+                    beneficiariesList.append(empty);
+                    return;
+                }
+                for (const item of items) {
+                    const card = document.createElement('article');
+                    card.className = 'account-card';
+                    const title = document.createElement('span');
+                    title.className = 'account-owner';
+                    title.textContent = item.nickname ? `${item.nickname} (${item.name})` : item.name;
+                    const number = document.createElement('span');
+                    number.className = 'account-number';
+                    number.textContent = `${item.accountNumber}${item.defaultReference ? ` · Ref: ${item.defaultReference}` : ''}`;
+                    const actions = document.createElement('div');
+                    actions.className = 'inline-action-group';
+                    const useBtn = document.createElement('button');
+                    useBtn.type = 'button';
+                    useBtn.className = 'filter-button filter-button-primary';
+                    useBtn.textContent = 'Use payee';
+                    useBtn.addEventListener('click', () => {
+                        if (destinationSelect) {
+                            destinationSelect.value = item.accountNumber;
+                            destinationSelect.dispatchEvent(new Event('input'));
+                        }
+                        const descInput = document.querySelector('#description');
+                        if (descInput && item.defaultReference) descInput.value = item.defaultReference;
+                        document.querySelector('#amount')?.focus();
+                    });
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'filter-button';
+                    delBtn.textContent = 'Remove';
+                    delBtn.addEventListener('click', async () => {
+                        const res = await fetch(`/api/beneficiaries/${item.id}`, { method: 'DELETE' });
+                        if (res.ok) await loadBeneficiaries();
+                    });
+                    actions.append(useBtn, delBtn);
+                    card.append(title, number, actions);
+                    beneficiariesList.append(card);
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        beneficiaryForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (beneficiaryStatus) beneficiaryStatus.textContent = 'Saving beneficiary...';
+            const payload = Object.fromEntries(new FormData(beneficiaryForm));
+            try {
+                const response = await fetch('/api/beneficiaries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not save beneficiary.');
+                if (beneficiaryStatus) beneficiaryStatus.textContent = result.message;
+                beneficiaryForm.reset();
+                await loadBeneficiaries();
+            } catch (error) {
+                if (beneficiaryStatus) beneficiaryStatus.textContent = error.message;
+            }
+        });
+
+        // Scheduled & Recurring Transfers
+        async function loadScheduledTransfers() {
+            if (!scheduledTransfersList) return;
+            try {
+                const response = await fetch('/api/scheduled-transfers');
+                if (!response.ok) return;
+                const result = await response.json();
+                scheduledTransfersList.replaceChildren();
+                const items = result.scheduledTransfers || [];
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No scheduled or recurring transfers.';
+                    scheduledTransfersList.append(empty);
+                    return;
+                }
+                for (const item of items) {
+                    const card = document.createElement('article');
+                    card.className = 'account-card';
+                    const header = document.createElement('span');
+                    header.className = 'account-owner';
+                    header.textContent = `${item.frequency.toUpperCase()} · ${item.status.toUpperCase()} · Next: ${new Date(item.nextRunAt).toLocaleDateString()}`;
+                    const detail = document.createElement('span');
+                    detail.className = 'account-number';
+                    detail.textContent = `${item.fromAccount} → ${item.toAccount}${item.description ? ` (${item.description})` : ''}`;
+                    const amount = document.createElement('span');
+                    amount.className = 'account-balance';
+                    amount.textContent = formatMoney(item.amount);
+                    card.append(header, detail, amount);
+                    if (item.status === 'active') {
+                        const cancelBtn = document.createElement('button');
+                        cancelBtn.type = 'button';
+                        cancelBtn.className = 'filter-button';
+                        cancelBtn.textContent = 'Cancel schedule';
+                        cancelBtn.addEventListener('click', async () => {
+                            const res = await fetch(`/api/scheduled-transfers/${item.id}`, { method: 'DELETE' });
+                            if (res.ok) await loadScheduledTransfers();
+                        });
+                        card.append(cancelBtn);
+                    }
+                    scheduledTransfersList.append(card);
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        scheduledTransferForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (scheduledTransferStatus) scheduledTransferStatus.textContent = 'Scheduling transfer...';
+            const payload = Object.fromEntries(new FormData(scheduledTransferForm));
+            try {
+                const response = await fetch('/api/scheduled-transfers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not schedule transfer.');
+                if (scheduledTransferStatus) scheduledTransferStatus.textContent = result.message;
+                scheduledTransferForm.reset();
+                if (scheduledNextRunDate) {
+                    scheduledNextRunDate.value = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+                }
+                await loadScheduledTransfers();
+            } catch (error) {
+                if (scheduledTransferStatus) scheduledTransferStatus.textContent = error.message;
+            }
+        });
+
+        // Payment Requests ("Pay Me")
+        async function loadPaymentRequests() {
+            if (!incomingPaymentRequests && !outgoingPaymentRequests) return;
+            try {
+                const response = await fetch('/api/payment-requests');
+                if (!response.ok) return;
+                const result = await response.json();
+
+                if (incomingPaymentRequests) {
+                    incomingPaymentRequests.replaceChildren();
+                    const incoming = result.incoming || [];
+                    if (!incoming.length) {
+                        const empty = document.createElement('p');
+                        empty.className = 'empty-state';
+                        empty.textContent = 'No incoming payment requests.';
+                        incomingPaymentRequests.append(empty);
+                    }
+                    for (const reqItem of incoming) {
+                        const card = document.createElement('article');
+                        card.className = 'account-card';
+                        const meta = document.createElement('span');
+                        meta.className = 'account-owner';
+                        meta.textContent = `From ${reqItem.requesterName} · ${reqItem.status.toUpperCase()}`;
+                        const detail = document.createElement('span');
+                        detail.className = 'account-number';
+                        detail.textContent = `Pay from ${reqItem.fromAccount} to ${reqItem.toAccount}${reqItem.description ? ` · ${reqItem.description}` : ''}`;
+                        const amount = document.createElement('span');
+                        amount.className = 'account-balance';
+                        amount.textContent = formatMoney(reqItem.amount);
+                        card.append(meta, detail, amount);
+                        if (reqItem.status === 'pending') {
+                            const actions = document.createElement('div');
+                            actions.className = 'inline-action-group';
+                            const payBtn = document.createElement('button');
+                            payBtn.type = 'button';
+                            payBtn.className = 'filter-button filter-button-primary';
+                            payBtn.textContent = 'Approve & pay';
+                            payBtn.addEventListener('click', async () => {
+                                if (!window.confirm(`Approve and pay ${formatMoney(reqItem.amount)} to ${reqItem.requesterName}?`)) return;
+                                const res = await fetch(`/api/payment-requests/${reqItem.id}/respond`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'pay' })
+                                });
+                                const body = await res.json();
+                                if (paymentRequestStatus) paymentRequestStatus.textContent = body.message || body.error;
+                                await loadDashboard();
+                            });
+                            const declineBtn = document.createElement('button');
+                            declineBtn.type = 'button';
+                            declineBtn.className = 'filter-button';
+                            declineBtn.textContent = 'Decline';
+                            declineBtn.addEventListener('click', async () => {
+                                const res = await fetch(`/api/payment-requests/${reqItem.id}/respond`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'decline' })
+                                });
+                                const body = await res.json();
+                                if (paymentRequestStatus) paymentRequestStatus.textContent = body.message || body.error;
+                                await loadPaymentRequests();
+                            });
+                            actions.append(payBtn, declineBtn);
+                            card.append(actions);
+                        }
+                        incomingPaymentRequests.append(card);
+                    }
+                }
+
+                if (outgoingPaymentRequests) {
+                    outgoingPaymentRequests.replaceChildren();
+                    const outgoing = result.outgoing || [];
+                    if (!outgoing.length) {
+                        const empty = document.createElement('p');
+                        empty.className = 'empty-state';
+                        empty.textContent = 'No outgoing payment requests.';
+                        outgoingPaymentRequests.append(empty);
+                    }
+                    for (const reqItem of outgoing) {
+                        const card = document.createElement('article');
+                        card.className = 'account-card';
+                        const meta = document.createElement('span');
+                        meta.className = 'account-owner';
+                        meta.textContent = `Requested from ${reqItem.payerName} · ${reqItem.status.toUpperCase()}`;
+                        const detail = document.createElement('span');
+                        detail.className = 'account-number';
+                        detail.textContent = `${reqItem.fromAccount} → ${reqItem.toAccount}${reqItem.description ? ` · ${reqItem.description}` : ''}`;
+                        const amount = document.createElement('span');
+                        amount.className = 'account-balance';
+                        amount.textContent = formatMoney(reqItem.amount);
+                        card.append(meta, detail, amount);
+                        if (reqItem.status === 'pending') {
+                            const cancelBtn = document.createElement('button');
+                            cancelBtn.type = 'button';
+                            cancelBtn.className = 'filter-button';
+                            cancelBtn.textContent = 'Cancel request';
+                            cancelBtn.addEventListener('click', async () => {
+                                const res = await fetch(`/api/payment-requests/${reqItem.id}/respond`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'cancel' })
+                                });
+                                if (res.ok) await loadPaymentRequests();
+                            });
+                            card.append(cancelBtn);
+                        }
+                        outgoingPaymentRequests.append(card);
+                    }
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        paymentRequestForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (paymentRequestStatus) paymentRequestStatus.textContent = 'Sending payment request...';
+            const payload = Object.fromEntries(new FormData(paymentRequestForm));
+            try {
+                const response = await fetch('/api/payment-requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not send payment request.');
+                if (paymentRequestStatus) paymentRequestStatus.textContent = result.message;
+                paymentRequestForm.reset();
+                await loadPaymentRequests();
+            } catch (error) {
+                if (paymentRequestStatus) paymentRequestStatus.textContent = error.message;
+            }
+        });
+
+        // Virtual Debit Cards
+        async function loadVirtualCards() {
+            if (!virtualCardsList) return;
+            try {
+                const response = await fetch('/api/cards');
+                if (!response.ok) return;
+                const result = await response.json();
+                virtualCardsList.replaceChildren();
+                const cards = result.cards || [];
+                if (!cards.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No virtual cards issued yet.';
+                    virtualCardsList.append(empty);
+                    return;
+                }
+                for (const card of cards) {
+                    const item = document.createElement('article');
+                    item.className = 'account-card virtual-card-item';
+                    const meta = document.createElement('span');
+                    meta.className = 'account-owner';
+                    meta.textContent = `Account ${card.accountNumber} · ${card.status.toUpperCase()} · Exp ${card.expiryMonth}/${card.expiryYear}`;
+                    const pan = document.createElement('span');
+                    pan.className = 'account-balance';
+                    pan.textContent = card.maskedNumber;
+                    const limitInfo = document.createElement('span');
+                    limitInfo.className = 'account-number';
+                    limitInfo.textContent = `Daily limit: ${formatMoney(card.dailyLimit)} · Online payments: ${card.onlinePaymentsEnabled ? 'Enabled' : 'Blocked'}`;
+
+                    const actions = document.createElement('div');
+                    actions.className = 'inline-action-group';
+
+                    const freezeBtn = document.createElement('button');
+                    freezeBtn.type = 'button';
+                    freezeBtn.className = 'filter-button';
+                    freezeBtn.textContent = card.status === 'frozen' ? 'Unfreeze card' : 'Freeze card';
+                    freezeBtn.addEventListener('click', async () => {
+                        const nextStatus = card.status === 'frozen' ? 'active' : 'frozen';
+                        const res = await fetch(`/api/cards/${card.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: nextStatus })
+                        });
+                        if (res.ok) await loadVirtualCards();
+                    });
+
+                    const onlineBtn = document.createElement('button');
+                    onlineBtn.type = 'button';
+                    onlineBtn.className = 'filter-button';
+                    onlineBtn.textContent = card.onlinePaymentsEnabled ? 'Block online' : 'Allow online';
+                    onlineBtn.addEventListener('click', async () => {
+                        const res = await fetch(`/api/cards/${card.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ onlinePaymentsEnabled: !card.onlinePaymentsEnabled })
+                        });
+                        if (res.ok) await loadVirtualCards();
+                    });
+
+                    actions.append(freezeBtn, onlineBtn);
+                    item.append(meta, pan, limitInfo, actions);
+                    virtualCardsList.append(item);
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        issueCardForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (virtualCardStatus) virtualCardStatus.textContent = 'Issuing virtual debit card...';
+            const payload = Object.fromEntries(new FormData(issueCardForm));
+            try {
+                const response = await fetch('/api/cards', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not issue virtual card.');
+                if (virtualCardStatus) virtualCardStatus.textContent = result.message;
+                await loadVirtualCards();
+            } catch (error) {
+                if (virtualCardStatus) virtualCardStatus.textContent = error.message;
+            }
+        });
+
+        // Savings Goals (Pockets)
+        async function loadSavingsGoals() {
+            if (!savingsGoalsList) return;
+            try {
+                const response = await fetch('/api/savings-goals');
+                if (!response.ok) return;
+                const result = await response.json();
+                savingsGoalsList.replaceChildren();
+                const goals = result.goals || [];
+                if (!goals.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No savings goals created yet.';
+                    savingsGoalsList.append(empty);
+                    return;
+                }
+                for (const goal of goals) {
+                    const card = document.createElement('article');
+                    card.className = 'account-card';
+                    const meta = document.createElement('span');
+                    meta.className = 'account-owner';
+                    meta.textContent = `${goal.name} · Linked to ${goal.accountNumber} (${goal.progressPercent}%)`;
+                    const amount = document.createElement('span');
+                    amount.className = 'account-balance';
+                    amount.textContent = `${formatMoney(goal.currentAmount)} / ${formatMoney(goal.targetAmount)}`;
+
+                    const progressTrack = document.createElement('div');
+                    progressTrack.className = 'goal-progress-track';
+                    const progressFill = document.createElement('div');
+                    progressFill.className = 'goal-progress-fill';
+                    progressFill.style.width = `${goal.progressPercent}%`;
+                    progressTrack.append(progressFill);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'inline-action-group';
+
+                    const addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'filter-button filter-button-primary';
+                    addBtn.textContent = 'Add funds';
+                    addBtn.addEventListener('click', async () => {
+                        const raw = window.prompt(`Enter ZAR amount to move from ${goal.accountNumber} into "${goal.name}":`, '100.00');
+                        if (!raw) return;
+                        const res = await fetch(`/api/savings-goals/${goal.id}/allocate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ direction: 'deposit', amount: raw })
+                        });
+                        const body = await res.json();
+                        if (savingsGoalStatus) savingsGoalStatus.textContent = body.message || body.error;
+                        await loadDashboard();
+                    });
+
+                    const withdrawBtn = document.createElement('button');
+                    withdrawBtn.type = 'button';
+                    withdrawBtn.className = 'filter-button';
+                    withdrawBtn.textContent = 'Withdraw';
+                    withdrawBtn.disabled = goal.currentAmount <= 0;
+                    withdrawBtn.addEventListener('click', async () => {
+                        const raw = window.prompt(`Enter ZAR amount to release from "${goal.name}" back to ${goal.accountNumber}:`, String(goal.currentAmount));
+                        if (!raw) return;
+                        const res = await fetch(`/api/savings-goals/${goal.id}/allocate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ direction: 'withdraw', amount: raw })
+                        });
+                        const body = await res.json();
+                        if (savingsGoalStatus) savingsGoalStatus.textContent = body.message || body.error;
+                        await loadDashboard();
+                    });
+
+                    const closeBtn = document.createElement('button');
+                    closeBtn.type = 'button';
+                    closeBtn.className = 'filter-button';
+                    closeBtn.textContent = 'Close goal';
+                    closeBtn.addEventListener('click', async () => {
+                        if (!window.confirm(`Close "${goal.name}" and return any saved balance to ${goal.accountNumber}?`)) return;
+                        const res = await fetch(`/api/savings-goals/${goal.id}`, { method: 'DELETE' });
+                        const body = await res.json();
+                        if (savingsGoalStatus) savingsGoalStatus.textContent = body.message || body.error;
+                        await loadDashboard();
+                    });
+
+                    actions.append(addBtn, withdrawBtn, closeBtn);
+                    card.append(meta, amount, progressTrack, actions);
+                    savingsGoalsList.append(card);
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        createSavingsGoalForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (savingsGoalStatus) savingsGoalStatus.textContent = 'Creating savings goal...';
+            const payload = Object.fromEntries(new FormData(createSavingsGoalForm));
+            try {
+                const response = await fetch('/api/savings-goals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not create savings goal.');
+                if (savingsGoalStatus) savingsGoalStatus.textContent = result.message;
+                createSavingsGoalForm.reset();
+                await loadSavingsGoals();
+            } catch (error) {
+                if (savingsGoalStatus) savingsGoalStatus.textContent = error.message;
+            }
+        });
+
+        // Transaction Disputes
+        async function loadDisputes() {
+            if (!disputesList) return;
+            try {
+                const response = await fetch('/api/disputes');
+                if (!response.ok) return;
+                const result = await response.json();
+                disputesList.replaceChildren();
+                const items = result.disputes || [];
+                if (!items.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'empty-state';
+                    empty.textContent = 'No transaction disputes submitted.';
+                    disputesList.append(empty);
+                    return;
+                }
+                for (const item of items) {
+                    const card = document.createElement('article');
+                    card.className = 'account-card';
+                    const meta = document.createElement('span');
+                    meta.className = 'account-owner';
+                    meta.textContent = `${item.status.toUpperCase()}${item.reversed ? ' (REVERSED)' : ''} · Account ${item.accountNumber} · ${new Date(item.createdAt).toLocaleDateString()}`;
+                    const reason = document.createElement('span');
+                    reason.className = 'account-number';
+                    reason.textContent = `Reason: ${item.reason}${item.resolutionNote ? ` · Admin note: ${item.resolutionNote}` : ''}`;
+                    card.append(meta, reason);
+                    disputesList.append(card);
+                }
+            } catch {
+                // Ignore
+            }
+        }
+
+        disputeForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (disputeStatus) disputeStatus.textContent = 'Submitting transaction dispute...';
+            const payload = Object.fromEntries(new FormData(disputeForm));
+            try {
+                const response = await fetch('/api/disputes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not submit dispute.');
+                if (disputeStatus) disputeStatus.textContent = result.message;
+                disputeForm.reset();
+                await loadDisputes();
+            } catch (error) {
+                if (disputeStatus) disputeStatus.textContent = error.message;
             }
         });
 

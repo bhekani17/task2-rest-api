@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/images/bg.png">
     <link rel="stylesheet" href="/css/dashboard.css">
 </head>
-<body>
+<body class="dashboard-page">
     <div class="page-shell">
         <aside class="sidebar">
             <div class="brand">
@@ -79,6 +79,9 @@
                             <option value="interest">Interest</option>
                             <option value="stock_buy">Stock purchase</option>
                             <option value="stock_sell">Stock sale</option>
+                            <option value="goal_allocate">Savings goal deposit</option>
+                            <option value="goal_release">Savings goal withdrawal</option>
+                            <option value="reversal">Dispute reversal</option>
                         </select>
                     </label>
                     <label for="filterAccount">Account
@@ -101,6 +104,7 @@
                                 <th>From</th>
                                 <th>To</th>
                                 <th>Amount</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="transactions"></tbody>
@@ -111,6 +115,28 @@
                     <span id="paginationLabel" class="pagination-label">Page 1</span>
                     <button id="nextPage" class="page-button" type="button" disabled>Next</button>
                 </div>
+            </section>
+
+            <section id="disputesSection" class="panel-card single-panel" aria-labelledby="disputesHeading">
+                <div class="dashboard-header">
+                    <div>
+                        <h2 id="disputesHeading">Transaction disputes &amp; reversals</h2>
+                        <p class="panel-description">Report an unauthorized or erroneous transaction for administrator review and reversal.</p>
+                    </div>
+                </div>
+                <form id="disputeForm" class="filter-form">
+                    <label for="disputeTransactionId">Transaction ID
+                        <input id="disputeTransactionId" name="transactionId" type="text" pattern="[a-fA-F0-9]{24}" maxlength="24" placeholder="Select 'Dispute' on a row above or paste ID" required>
+                    </label>
+                    <label for="disputeReason">Reason for dispute
+                        <input id="disputeReason" name="reason" type="text" minlength="5" maxlength="300" placeholder="Describe why this transaction should be reversed" required>
+                    </label>
+                    <div class="filter-actions">
+                        <button class="filter-button filter-button-primary" type="submit">Submit dispute</button>
+                    </div>
+                </form>
+                <p id="disputeStatus" class="filter-status" role="status" aria-live="polite"></p>
+                <div id="disputesList" class="account-list"></div>
             </section>
         </main>
     </div>

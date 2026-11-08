@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 
 function registerTransactionRoutes(app, dependencies) {
   const {
-    User, Account, Transaction, reportServerError, mongoose, io,
+    User, Account, Transaction, Notification, reportServerError, mongoose, io,
     ownedAccountNumbers, buildTransactionFilter, transactionCsv,
     parseTransactionPagination, transactionResponse, parseAmountMinor
   } = dependencies;
@@ -16,7 +16,7 @@ function registerTransactionRoutes(app, dependencies) {
         return res.status(parsed.error.status).json({ error: parsed.error.message });
       }
       if (req.query.accountNumber && req.authUser.role === 'admin' &&
-          !await Account.exists({ accountNumber: req.query.accountNumber, status: 'active' })) {
+          !await Account.exists({ accountNumber: req.query.accountNumber, status: { $in: ['active', 'frozen'] } })) {
         return res.status(404).json({ error: 'Account not found.' });
       }
   
@@ -61,7 +61,7 @@ function registerTransactionRoutes(app, dependencies) {
       const { page, limit } = pagination;
       const filter = parsed.filter;
       if (req.query.accountNumber && req.authUser.role === 'admin' &&
-          !await Account.exists({ accountNumber: req.query.accountNumber, status: 'active' })) {
+          !await Account.exists({ accountNumber: req.query.accountNumber, status: { $in: ['active', 'frozen'] } })) {
         return res.status(404).json({ error: 'Account not found.' });
       }
   
@@ -94,8 +94,8 @@ function registerTransactionRoutes(app, dependencies) {
   
     try {
       const accountFilter = req.authUser.role === 'admin'
-        ? { accountNumber, status: 'active' }
-        : { accountNumber, ownerUserId: req.authUser._id, status: 'active' };
+        ? { accountNumber, status: { $in: ['active', 'frozen'] } }
+        : { accountNumber, ownerUserId: req.authUser._id, status: { $in: ['active', 'frozen'] } };
       const account = await Account.findOne(accountFilter).select('accountNumber').lean();
       if (!account) {
         return res.status(req.authUser.role === 'admin' ? 404 : 403).json({
@@ -154,6 +154,16 @@ function registerTransactionRoutes(app, dependencies) {
         status: 'active'
       });
       if (!sourceAccount) {
+        const isFrozen = await Account.exists({
+          accountNumber,
+          ownerUserId: req.authUser._id,
+          status: 'frozen'
+        });
+        if (isFrozen) {
+          return res.status(403).json({
+            error: 'This account is currently frozen and cannot process transactions.'
+          });
+        }
         return res.status(403).json({
           error: type === 'deposit'
             ? 'Demo deposits can only be made to your own account.'
@@ -281,11 +291,26 @@ function registerTransactionRoutes(app, dependencies) {
       const eventMessage = type === 'deposit'
         ? 'A simulated demo deposit has been added to your account.'
         : 'An incoming transfer has been completed.';
+      const formattedAmount = `R ${(amountMinor / 100).toFixed(2)}`;
       if (senderUserId) {
+        await Notification?.create({
+          userId: senderUserId,
+          type: 'transfer',
+          message: `Transfer of ${formattedAmount} from ${accountNumber} to ${destinationAccountNumber} completed.`
+        }).catch(() => {});
         io.to(`user:${senderUserId}`).emit('transfer:completed', {
           message: 'Your transfer has been completed.',
           transactionId: String(savedTransaction._id)
         });
+      }
+      if (recipientUserId) {
+        await Notification?.create({
+          userId: recipientUserId,
+          type: type === 'deposit' ? 'deposit' : 'transfer',
+          message: type === 'deposit'
+            ? `Demo deposit of ${formattedAmount} credited to ${accountNumber}.`
+            : `Incoming transfer of ${formattedAmount} received into ${destinationAccountNumber}.`
+        }).catch(() => {});
       }
       io.to(`user:${recipientUserId}`).emit(eventName, {
         message: eventMessage,

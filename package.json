@@ -1,7 +1,7 @@
 {
-  "name": "task2-rest-api",
+  "name": "sky-bank",
   "version": "1.0.0",
-  "description": "Sky Bank account and transaction application foundation",
+  "description": "Sky Bank full-stack digital banking and simulated investment platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

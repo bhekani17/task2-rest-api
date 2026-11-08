@@ -50,7 +50,7 @@ const accountSchema = new mongoose.Schema({
   ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   accountNumber: { type: String, required: true, unique: true },
   accountType: { type: String, enum: ['cheque', 'savings'], required: true },
-  status: { type: String, enum: ['pending', 'active', 'closed'], default: 'active', required: true },
+  status: { type: String, enum: ['pending', 'active', 'frozen', 'closed'], default: 'active', required: true },
   balanceMinor: { type: Number, required: true, default: 0, min: 0, validate: Number.isSafeInteger },
   lastInterestCreditedMonth: { type: String, default: null }
 }, { timestamps: true });
@@ -60,6 +60,8 @@ const Account = mongoose.model('Account', accountSchema);
 const sessionSchema = new mongoose.Schema({
   tokenHash: { type: String, required: true, unique: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  ipAddress: { type: String, default: '' },
+  userAgent: { type: String, default: '' },
   expiresAt: { type: Date, required: true }
 }, { timestamps: true });
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -83,7 +85,11 @@ const Activation = mongoose.model('Activation', activationSchema);
 
 // Store every money movement as a ledger entry; balances are stored as integer cents.
 const transactionSchema = new mongoose.Schema({
-  type: { type: String, enum: ['deposit', 'withdrawal', 'transfer', 'interest', 'stock_buy', 'stock_sell'], required: true },
+  type: {
+    type: String,
+    enum: ['deposit', 'withdrawal', 'transfer', 'interest', 'stock_buy', 'stock_sell', 'reversal', 'goal_allocate', 'goal_release'],
+    required: true
+  },
   actorUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   idempotencyKey: { type: String, required: true },
   requestFingerprint: { type: String, required: true },
@@ -137,6 +143,104 @@ stockTradeSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
 stockTradeSchema.index({ userId: 1, createdAt: -1 });
 const StockTrade = mongoose.model('StockTrade', stockTradeSchema);
 
+const beneficiarySchema = new mongoose.Schema({
+  ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  name: { type: String, required: true, trim: true, maxlength: 80 },
+  nickname: { type: String, trim: true, maxlength: 60, default: '' },
+  accountNumber: { type: String, required: true, trim: true },
+  defaultReference: { type: String, trim: true, maxlength: 120, default: '' }
+}, { timestamps: true });
+beneficiarySchema.index({ ownerUserId: 1, accountNumber: 1 }, { unique: true });
+const Beneficiary = mongoose.model('Beneficiary', beneficiarySchema);
+
+const scheduledTransferSchema = new mongoose.Schema({
+  ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  fromAccount: { type: String, required: true },
+  toAccount: { type: String, required: true },
+  amountMinor: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  description: { type: String, trim: true, maxlength: 120, default: '' },
+  frequency: { type: String, enum: ['once', 'weekly', 'monthly'], required: true, default: 'monthly' },
+  nextRunAt: { type: Date, required: true, index: true },
+  status: { type: String, enum: ['active', 'completed', 'cancelled', 'failed'], default: 'active', required: true },
+  lastError: { type: String, default: null },
+  lastExecutedAt: { type: Date, default: null }
+}, { timestamps: true });
+scheduledTransferSchema.index({ status: 1, nextRunAt: 1 });
+const ScheduledTransfer = mongoose.model('ScheduledTransfer', scheduledTransferSchema);
+
+const paymentRequestSchema = new mongoose.Schema({
+  requesterUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  payerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  requesterName: { type: String, default: '' },
+  payerName: { type: String, default: '' },
+  fromAccount: { type: String, required: true },
+  toAccount: { type: String, required: true },
+  amountMinor: { type: Number, required: true, min: 1, validate: Number.isSafeInteger },
+  description: { type: String, trim: true, maxlength: 120, default: '' },
+  status: { type: String, enum: ['pending', 'paid', 'declined', 'cancelled'], default: 'pending', required: true },
+  transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null }
+}, { timestamps: true });
+paymentRequestSchema.index({ payerUserId: 1, status: 1, createdAt: -1 });
+paymentRequestSchema.index({ requesterUserId: 1, status: 1, createdAt: -1 });
+const PaymentRequest = mongoose.model('PaymentRequest', paymentRequestSchema);
+
+const virtualCardSchema = new mongoose.Schema({
+  ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  accountNumber: { type: String, required: true },
+  cardHolderName: { type: String, required: true, trim: true },
+  last4: { type: String, required: true },
+  maskedNumber: { type: String, required: true },
+  expiryMonth: { type: String, required: true },
+  expiryYear: { type: String, required: true },
+  status: { type: String, enum: ['active', 'frozen', 'cancelled'], default: 'active', required: true },
+  dailyLimitMinor: { type: Number, required: true, default: 2500000, min: 10000, validate: Number.isSafeInteger },
+  onlinePaymentsEnabled: { type: Boolean, default: true, required: true }
+}, { timestamps: true });
+virtualCardSchema.index({ ownerUserId: 1, createdAt: -1 });
+const VirtualCard = mongoose.model('VirtualCard', virtualCardSchema);
+
+const savingsGoalSchema = new mongoose.Schema({
+  ownerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  accountNumber: { type: String, required: true },
+  name: { type: String, required: true, trim: true, maxlength: 60 },
+  targetMinor: { type: Number, required: true, min: 100, validate: Number.isSafeInteger },
+  currentMinor: { type: Number, required: true, default: 0, min: 0, validate: Number.isSafeInteger },
+  status: { type: String, enum: ['active', 'completed'], default: 'active', required: true }
+}, { timestamps: true });
+savingsGoalSchema.index({ ownerUserId: 1, createdAt: -1 });
+const SavingsGoal = mongoose.model('SavingsGoal', savingsGoalSchema);
+
+const disputeSchema = new mongoose.Schema({
+  reporterUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true, index: true },
+  accountNumber: { type: String, required: true },
+  reason: { type: String, required: true, trim: true, maxlength: 300 },
+  status: { type: String, enum: ['open', 'resolved', 'rejected'], default: 'open', required: true },
+  resolutionNote: { type: String, trim: true, maxlength: 300, default: '' },
+  reversalTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null }
+}, { timestamps: true });
+disputeSchema.index({ status: 1, createdAt: -1 });
+const Dispute = mongoose.model('Dispute', disputeSchema);
+
+const auditLogSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  action: { type: String, required: true, trim: true, maxlength: 80 },
+  detail: { type: String, trim: true, maxlength: 240, default: '' },
+  ipAddress: { type: String, default: '' },
+  userAgent: { type: String, default: '' }
+}, { timestamps: true });
+auditLogSchema.index({ userId: 1, createdAt: -1 });
+const AuditLog = mongoose.model('AuditLog', auditLogSchema);
+
+const notificationSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  type: { type: String, required: true, trim: true, default: 'info' },
+  message: { type: String, required: true, trim: true, maxlength: 240 },
+  read: { type: Boolean, default: false, required: true }
+}, { timestamps: true });
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+const Notification = mongoose.model('Notification', notificationSchema);
+
 module.exports = {
   MAX_ACCOUNTS_PER_USER,
   User,
@@ -147,5 +251,13 @@ module.exports = {
   Transaction,
   Counter,
   StockPortfolio,
-  StockTrade
+  StockTrade,
+  Beneficiary,
+  ScheduledTransfer,
+  PaymentRequest,
+  VirtualCard,
+  SavingsGoal,
+  Dispute,
+  AuditLog,
+  Notification
 };

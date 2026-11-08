@@ -29,8 +29,9 @@ function registerPageRoutes(app, dependencies) {
 
   app.get('/', async (req, res, next) => {
     try {
-      if (isDatabaseReady() && await loadSessionUser(req)) {
-        return res.redirect('/dashboard');
+      const user = isDatabaseReady() ? await loadSessionUser(req) : null;
+      if (user) {
+        return res.redirect(user.role === 'admin' ? '/admin' : '/dashboard');
       }
       if (readCookie(req, SESSION_COOKIE)) clearSessionCookie(res);
       sendClientPage('welcome.html')(req, res);
@@ -53,8 +54,9 @@ function registerPageRoutes(app, dependencies) {
 
   async function redirectAuthenticatedCustomer(req, res, next) {
     try {
-      if (isDatabaseReady() && await loadSessionUser(req)) {
-        return res.redirect('/dashboard');
+      const user = isDatabaseReady() ? await loadSessionUser(req) : null;
+      if (user) {
+        return res.redirect(user.role === 'admin' ? '/admin' : '/dashboard');
       }
       next();
     } catch (error) {

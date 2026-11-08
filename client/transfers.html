@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/images/bg.png">
     <link rel="stylesheet" href="/css/dashboard.css">
 </head>
-<body>
+<body class="dashboard-page">
     <div class="page-shell">
         <aside class="sidebar">
             <div class="brand">
@@ -69,6 +69,7 @@
                         <label for="destinationAccountNumber">Destination account
                             <input id="destinationAccountNumber" name="destinationAccountNumber" type="text" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit account number" required>
                         </label>
+                        <p id="recipientLookupResult" class="filter-status" role="status" aria-live="polite" hidden></p>
                         <label for="amount">Amount (ZAR)
                             <input id="amount" name="amount" type="number" min="0.01" max="999999999.99" step="0.01" placeholder="0.00" required>
                         </label>
@@ -94,7 +95,99 @@
                     </form>
                     <p id="demoDepositStatus" class="filter-status" role="status" aria-live="polite"></p>
                 </section>
+
+                <section id="beneficiariesSection" class="panel-card single-panel" aria-labelledby="beneficiariesHeading">
+                    <h2 id="beneficiariesHeading">Saved beneficiaries</h2>
+                    <p class="panel-description">Save verified payees for one-click account number and reference autofill.</p>
+                    <form id="beneficiaryForm" class="transaction-form">
+                        <label for="beneficiaryAccountNumber">Payee account number
+                            <input id="beneficiaryAccountNumber" name="accountNumber" type="text" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit account number" required>
+                        </label>
+                        <label for="beneficiaryNickname">Nickname (optional)
+                            <input id="beneficiaryNickname" name="nickname" type="text" maxlength="60" placeholder="e.g. Landlord / Mom">
+                        </label>
+                        <label for="beneficiaryReference">Default reference (optional)
+                            <input id="beneficiaryReference" name="defaultReference" type="text" maxlength="120" placeholder="e.g. Monthly rent">
+                        </label>
+                        <button type="submit">Save beneficiary</button>
+                    </form>
+                    <p id="beneficiaryStatus" class="filter-status" role="status" aria-live="polite"></p>
+                    <div id="beneficiariesList" class="account-list"></div>
+                </section>
+
+                <section id="scheduledTransfersSection" class="panel-card single-panel" aria-labelledby="scheduledTransfersHeading">
+                    <h2 id="scheduledTransfersHeading">Scheduled &amp; recurring transfers</h2>
+                    <p class="panel-description">Set up future-dated or recurring weekly and monthly standing orders.</p>
+                    <form id="scheduledTransferForm" class="transaction-form">
+                        <label for="scheduledFromAccount">From account
+                            <select id="scheduledFromAccount" name="fromAccount" required>
+                                <option value="">Loading accounts...</option>
+                            </select>
+                        </label>
+                        <label for="scheduledToAccount">Destination account
+                            <input id="scheduledToAccount" name="toAccount" type="text" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit account number" required>
+                        </label>
+                        <label for="scheduledAmount">Amount (ZAR)
+                            <input id="scheduledAmount" name="amount" type="number" min="0.01" max="999999999.99" step="0.01" placeholder="0.00" required>
+                        </label>
+                        <label for="scheduledFrequency">Frequency
+                            <select id="scheduledFrequency" name="frequency" required>
+                                <option value="monthly">Monthly</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="once">One-time</option>
+                            </select>
+                        </label>
+                        <label for="scheduledNextRunDate">First execution date (UTC)
+                            <input id="scheduledNextRunDate" name="nextRunDate" type="date" required>
+                        </label>
+                        <label for="scheduledDescription">Reference (optional)
+                            <input id="scheduledDescription" name="description" type="text" maxlength="120" placeholder="e.g. Standing order">
+                        </label>
+                        <button type="submit">Schedule transfer</button>
+                    </form>
+                    <p id="scheduledTransferStatus" class="filter-status" role="status" aria-live="polite"></p>
+                    <div id="scheduledTransfersList" class="account-list"></div>
+                </section>
             </div>
+
+            <section id="paymentRequestsSection" class="panel-card single-panel" aria-labelledby="paymentRequestsHeading">
+                <div class="dashboard-header">
+                    <div>
+                        <h2 id="paymentRequestsHeading">Payment requests (&ldquo;Pay Me&rdquo;)</h2>
+                        <p class="panel-description">Request funds from another Sky Bank customer or approve incoming payment requests.</p>
+                    </div>
+                </div>
+                <form id="paymentRequestForm" class="filter-form">
+                    <label for="requestReceivingAccount">Receive into account
+                        <select id="requestReceivingAccount" name="receivingAccountNumber" required>
+                            <option value="">Loading accounts...</option>
+                        </select>
+                    </label>
+                    <label for="requestPayerAccount">Payer account number
+                        <input id="requestPayerAccount" name="payerAccountNumber" type="text" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit account" required>
+                    </label>
+                    <label for="requestAmount">Amount (ZAR)
+                        <input id="requestAmount" name="amount" type="number" min="0.01" max="999999999.99" step="0.01" placeholder="0.00" required>
+                    </label>
+                    <label for="requestDescription">Reason / reference
+                        <input id="requestDescription" name="description" type="text" maxlength="120" placeholder="e.g. Dinner split">
+                    </label>
+                    <div class="filter-actions">
+                        <button class="filter-button filter-button-primary" type="submit">Send request</button>
+                    </div>
+                </form>
+                <p id="paymentRequestStatus" class="filter-status" role="status" aria-live="polite"></p>
+                <div class="transfer-page-grid">
+                    <div>
+                        <h3 class="sub-panel-title">Incoming requests (to pay)</h3>
+                        <div id="incomingPaymentRequests" class="account-list"></div>
+                    </div>
+                    <div>
+                        <h3 class="sub-panel-title">Outgoing requests (requested by you)</h3>
+                        <div id="outgoingPaymentRequests" class="account-list"></div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
     <script src="/socket.io/socket.io.js"></script>

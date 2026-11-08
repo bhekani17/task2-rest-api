@@ -99,6 +99,18 @@
                     </div>
                 </section>
             </section>
+
+            <section id="notificationsSection" class="panel-card single-panel" aria-labelledby="notificationsHeading">
+                <div class="dashboard-header">
+                    <div class="inline-heading-group">
+                        <h2 id="notificationsHeading">Notifications</h2>
+                        <span id="notificationUnreadBadge" class="status-badge" hidden>0 unread</span>
+                    </div>
+                    <button id="markNotificationsReadButton" class="filter-button" type="button">Mark all read</button>
+                </div>
+                <p id="notificationsStatus" class="filter-status" role="status" aria-live="polite"></p>
+                <div id="notificationsList" class="account-list"></div>
+            </section>
         </main>
     </div>
 

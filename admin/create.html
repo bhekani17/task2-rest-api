@@ -14,13 +14,22 @@
                 <img class="brand-logo" src="/images/bg.png" alt="Sky Bank">
             </div>
 
-            <nav class="sidebar-nav">
-                <a class="nav-link" href="/dashboard">Dashboard</a>
-                <a class="nav-link" href="/profile">My profile</a>
-                <a class="nav-link" href="/accounts">Accounts</a>
-                <a class="nav-link" href="/transfers">Transfers</a>
-                <a class="nav-link" href="/transactions">Transactions</a>
-                <a class="nav-link active" href="/admin" aria-current="page">Admin</a>
+            <nav class="sidebar-nav" aria-label="Main navigation">
+                <div class="nav-group">
+                    <span class="nav-section-title">Workspace</span>
+                    <a class="nav-link" href="/dashboard">Dashboard</a>
+                    <a class="nav-link" href="/profile">My profile</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Banking</span>
+                    <a class="nav-link" href="/accounts">Accounts</a>
+                    <a class="nav-link" href="/transfers">Transfers</a>
+                    <a class="nav-link" href="/transactions">Transactions</a>
+                </div>
+                <div class="nav-group">
+                    <span class="nav-section-title">Administration</span>
+                    <a class="nav-link active" href="/admin" aria-current="page">Admin</a>
+                </div>
                 <button id="logoutButton" class="nav-link" type="button">Sign out</button>
             </nav>
         </aside>
@@ -144,6 +153,7 @@
                             <select id="accountStatusFilter" name="status">
                                 <option value="all">All statuses</option>
                                 <option value="active">Active</option>
+                                <option value="frozen">Frozen</option>
                                 <option value="pending">Pending</option>
                                 <option value="closed">Closed</option>
                             </select>
@@ -184,6 +194,8 @@
                                 <option value="deposit">Deposit</option>
                                 <option value="interest">Interest</option>
                                 <option value="withdrawal">Withdrawal</option>
+                                <option value="stock_buy">Stock purchase</option>
+                                <option value="stock_sell">Stock sale</option>
                             </select>
                         </label>
                         <label for="transactionAccountNumber">Account number
@@ -192,6 +204,32 @@
                         <button id="exportTransactionsButton" type="submit">Export CSV</button>
                     </form>
                     <p id="transactionExportStatus" class="table-status" role="status" aria-live="polite"></p>
+                </section>
+
+                <section class="admin-section" aria-labelledby="adminDisputesHeading">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="adminDisputesHeading">Transaction disputes &amp; reversals</h2>
+                            <p class="section-description">Review customer-reported transaction disputes and optionally execute atomic reversals.</p>
+                        </div>
+                        <button id="refreshDisputesButton" class="secondary-btn" type="button">Refresh</button>
+                    </div>
+                    <p id="disputesStatus" class="table-status" role="status" aria-live="polite">Loading disputes...</p>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Account</th>
+                                    <th>Amount</th>
+                                    <th>Reason</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminDisputesTable"></tbody>
+                        </table>
+                    </div>
                 </section>
             </div>
         </main>

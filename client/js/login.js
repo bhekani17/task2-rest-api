@@ -37,7 +37,7 @@ const form = document.querySelector('#loginForm');
                 }
 
                 message.textContent = `Welcome back, ${result.user.name}.`;
-                window.location.replace('/dashboard');
+                window.location.replace(result.user.role === 'admin' ? '/admin' : '/dashboard');
             } catch (error) {
                 message.textContent = error.message;
             }

@@ -185,3 +185,64 @@ test('password changes require the current password and revoke other sessions', 
     tokenHash: { $ne: 'hash:current-session-token' }
   });
 });
+
+test('admin registration requires a valid code and does not create a personal bank account', async () => {
+  const previousCode = process.env.ADMIN_REGISTRATION_CODE;
+  process.env.ADMIN_REGISTRATION_CODE = 'secret-admin-code-2026';
+  let createdUser;
+  let accountCreated = false;
+  let accountNumberRequested = false;
+
+  try {
+    const routes = createAuthHarness({
+      nextAccountNumber: async () => {
+        accountNumberRequested = true;
+        return '1234567890';
+      },
+      User: {
+        findOne: async () => null,
+        create: async ([doc]) => {
+          createdUser = { _id: 'admin-id', status: 'active', ...doc };
+          return [createdUser];
+        }
+      },
+      Account: {
+        create: async () => {
+          accountCreated = true;
+        }
+      }
+    });
+    const handler = routes.get('POST /api/auth/register')[0];
+
+    const invalidCodeRes = response();
+    await handler({
+      body: {
+        name: 'Admin User',
+        email: 'admin@example.com',
+        password: 'secure-admin-password',
+        adminCode: 'wrong-code'
+      }
+    }, invalidCodeRes);
+    assert.equal(invalidCodeRes.statusCode, 403);
+    assert.equal(createdUser, undefined);
+
+    const validCodeRes = response();
+    await handler({
+      body: {
+        name: 'Admin User',
+        email: 'admin@example.com',
+        password: 'secure-admin-password',
+        adminCode: 'secret-admin-code-2026'
+      }
+    }, validCodeRes);
+    assert.equal(validCodeRes.statusCode, 201);
+    assert.equal(createdUser.role, 'admin');
+    assert.equal(createdUser.accountCount, 0);
+    assert.equal(createdUser.accountNumber, undefined);
+    assert.equal(accountCreated, false);
+    assert.equal(accountNumberRequested, false);
+  } finally {
+    if (previousCode === undefined) delete process.env.ADMIN_REGISTRATION_CODE;
+    else process.env.ADMIN_REGISTRATION_CODE = previousCode;
+  }
+});

@@ -4,6 +4,8 @@ function createAccountService(dependencies) {
   const {
     User, Account, Counter, Transaction, Session, LoginAttempt, Activation,
     StockPortfolio, StockTrade,
+    Beneficiary, ScheduledTransfer, PaymentRequest, VirtualCard,
+    SavingsGoal, Dispute, AuditLog, Notification,
     mongoose, io, SYSTEM_ACTOR_USER_ID,
     MAX_ACCOUNTS_PER_USER
   } = dependencies;
@@ -55,6 +57,14 @@ function createAccountService(dependencies) {
     await Activation.init();
     await StockPortfolio?.init();
     await StockTrade?.init();
+    await Beneficiary?.init();
+    await ScheduledTransfer?.init();
+    await PaymentRequest?.init();
+    await VirtualCard?.init();
+    await SavingsGoal?.init();
+    await Dispute?.init();
+    await AuditLog?.init();
+    await Notification?.init();
     await User.updateMany({ role: { $exists: false } }, { $set: { role: 'customer' } });
     await User.updateMany({ status: { $exists: false } }, { $set: { status: 'active' } });
   
@@ -92,26 +102,32 @@ function createAccountService(dependencies) {
     );
   
     // Existing customers receive an account with a zero balance during migration.
-    const customers = await User.find({
+    // Administrators do not hold personal bank accounts.
+    const usersMissingFields = await User.find({
       $or: [
         { userId: { $exists: false } },
-        { accountNumber: { $exists: false } },
+        { role: { $ne: 'admin' }, accountNumber: { $exists: false } },
         { balanceMinor: { $exists: false } }
       ]
-    }).select('_id userId accountNumber balanceMinor').lean();
+    }).select('_id role userId accountNumber balanceMinor').lean();
   
-    for (const customer of customers) {
+    for (const user of usersMissingFields) {
       const updates = {};
-      if (!customer.userId) updates.userId = await nextUserId();
-      if (!customer.accountNumber) updates.accountNumber = await nextAccountNumber();
-      if (!Number.isSafeInteger(customer.balanceMinor)) updates.balanceMinor = 0;
-      await User.updateOne(
-        { _id: customer._id },
-        { $set: updates }
-      );
+      if (!user.userId) updates.userId = await nextUserId();
+      if (user.role !== 'admin' && !user.accountNumber) updates.accountNumber = await nextAccountNumber();
+      if (!Number.isSafeInteger(user.balanceMinor)) updates.balanceMinor = 0;
+      if (Object.keys(updates).length > 0) {
+        await User.updateOne(
+          { _id: user._id },
+          { $set: updates }
+        );
+      }
     }
   
-    const existingCustomers = await User.find({ accountNumber: { $exists: true } })
+    const existingCustomers = await User.find({
+      role: { $ne: 'admin' },
+      accountNumber: { $exists: true }
+    })
       .select('_id accountNumber balanceMinor status')
       .lean();
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -135,15 +151,15 @@ function createAccountService(dependencies) {
     }
   
     const accountCounts = await Account.aggregate([
-      { $match: { status: { $in: ['active', 'pending'] } } },
+      { $match: { status: { $in: ['active', 'pending', 'frozen'] } } },
       { $group: { _id: '$ownerUserId', count: { $sum: 1 } } }
     ]);
     const accountCountByOwner = new Map(
       accountCounts.map(({ _id, count }) => [String(_id), count])
     );
-    const users = await User.find().select('_id accountCount status').lean();
+    const users = await User.find().select('_id role accountCount status').lean();
     for (const user of users) {
-      const accountCount = user.status === 'closed'
+      const accountCount = user.status === 'closed' || user.role === 'admin'
         ? 0
         : accountCountByOwner.get(String(user._id)) || 0;
       if (user.accountCount !== accountCount) {
@@ -176,7 +192,7 @@ function createAccountService(dependencies) {
   
   async function ownedAccountNumbers(user) {
     if (user.role === 'admin') return null;
-    const accounts = await Account.find({ ownerUserId: user._id, status: 'active' })
+    const accounts = await Account.find({ ownerUserId: user._id, status: { $in: ['active', 'frozen'] } })
       .select('accountNumber')
       .lean();
     return accounts.map((account) => account.accountNumber);
@@ -253,6 +269,11 @@ function createAccountService(dependencies) {
             }
           });
           if (credited) {
+            await Notification?.create({
+              userId: account.ownerUserId,
+              type: 'interest',
+              message: `Savings interest of R ${(interestMinor / 100).toFixed(2)} for ${month} credited to ${account.accountNumber}.`
+            }).catch(() => {});
             io.to(`user:${account.ownerUserId}`).emit('interest:credited', {
               message: `Savings interest for ${month} has been credited.`,
               accountNumber: account.accountNumber

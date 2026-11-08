@@ -14,6 +14,8 @@ const accountsStatus = document.querySelector('#accountsStatus');
 const adminAccountsTable = document.querySelector('#adminAccountsTable');
 const transactionFilters = document.querySelector('#transactionFilters');
 const transactionExportStatus = document.querySelector('#transactionExportStatus');
+const disputesStatus = document.querySelector('#disputesStatus');
+const adminDisputesTable = document.querySelector('#adminDisputesTable');
 let customerPage = 1;
 let customerTotalPages = 1;
 let accountPage = 1;
@@ -129,6 +131,11 @@ function renderAccounts(accounts) {
         addCell(row, new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(account.balance));
         const actions = document.createElement('td');
         actions.className = 'row-actions';
+        if (account.status === 'active') {
+            actions.append(makeAction('Freeze', 'freeze-account', account.accountNumber));
+        } else if (account.status === 'frozen') {
+            actions.append(makeAction('Unfreeze', 'unfreeze-account', account.accountNumber));
+        }
         if (account.status !== 'closed') actions.append(makeAction('Close', 'close-account', account.accountNumber, 'danger'));
         else actions.textContent = '—';
         row.append(actions);
@@ -320,15 +327,113 @@ document.querySelector('#nextAccountsPage').addEventListener('click', () => {
 });
 
 adminAccountsTable.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-action="close-account"]');
+    const button = event.target.closest('button[data-action]');
     if (!button) return;
-    const { id } = button.dataset;
+    const { action, id } = button.dataset;
+
+    if (action === 'freeze-account' || action === 'unfreeze-account') {
+        const nextStatus = action === 'freeze-account' ? 'frozen' : 'active';
+        message.textContent = `${nextStatus === 'frozen' ? 'Freezing' : 'Unfreezing'} account ${id}...`;
+        try {
+            const result = await requestJson(`/api/admin/accounts/${encodeURIComponent(id)}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: nextStatus })
+            });
+            message.textContent = result.message;
+            await Promise.all([loadAccounts(), loadSummary()]);
+        } catch (error) {
+            message.textContent = error.message;
+        }
+        return;
+    }
+
+    if (action !== 'close-account') return;
     if (!window.confirm(`Close account ${id}? Its balance must be zero.`)) return;
     message.textContent = `Closing account ${id}...`;
     try {
         const result = await requestJson(`/api/admin/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
         message.textContent = result.message;
         await Promise.all([loadAccounts(), loadCustomers(), loadSummary()]);
+    } catch (error) {
+        message.textContent = error.message;
+    }
+});
+
+async function loadDisputes() {
+    if (!adminDisputesTable || !disputesStatus) return;
+    disputesStatus.textContent = 'Loading disputes...';
+    try {
+        const result = await requestJson('/api/disputes');
+        adminDisputesTable.replaceChildren();
+        const disputes = result.disputes || [];
+        if (!disputes.length) {
+            disputesStatus.textContent = 'No transaction disputes reported.';
+            return;
+        }
+        disputesStatus.textContent = `${disputes.length} dispute${disputes.length === 1 ? '' : 's'} found.`;
+        for (const dispute of disputes) {
+            const row = document.createElement('tr');
+            addCell(row, `${dispute.reporterName} (${dispute.reporterEmail})`);
+            addCell(row, dispute.accountNumber);
+            addCell(
+                row,
+                dispute.transactionAmount !== null
+                    ? new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(dispute.transactionAmount)
+                    : '—'
+            );
+            addCell(row, dispute.reason);
+            const statusCell = addCell(row, '');
+            const badge = document.createElement('span');
+            badge.className = 'status-badge';
+            badge.textContent = `${dispute.status}${dispute.reversed ? ' (reversed)' : ''}`;
+            statusCell.append(badge);
+
+            const actions = document.createElement('td');
+            actions.className = 'row-actions';
+            if (dispute.status === 'open') {
+                actions.append(
+                    makeAction('Reverse & resolve', 'reverse-dispute', dispute.id),
+                    makeAction('Resolve only', 'resolve-dispute', dispute.id),
+                    makeAction('Reject', 'reject-dispute', dispute.id, 'danger')
+                );
+            } else {
+                actions.textContent = dispute.resolutionNote || '—';
+            }
+            row.append(actions);
+            adminDisputesTable.append(row);
+        }
+    } catch (error) {
+        disputesStatus.textContent = error.message;
+    }
+}
+
+document.querySelector('#refreshDisputesButton')?.addEventListener('click', loadDisputes);
+
+adminDisputesTable?.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const { action, id } = button.dataset;
+    const isReversal = action === 'reverse-dispute';
+    const nextStatus = action === 'reject-dispute' ? 'rejected' : 'resolved';
+    const note = window.prompt(
+        `Enter an optional resolution note for this dispute (${isReversal ? 'will reverse funds and resolve' : nextStatus}):`,
+        isReversal ? 'Approved and reversed by administrator.' : ''
+    );
+    if (note === null) return;
+    message.textContent = 'Updating dispute...';
+    try {
+        const result = await requestJson(`/api/admin/disputes/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                status: nextStatus,
+                resolutionNote: note,
+                reverseTransaction: isReversal
+            })
+        });
+        message.textContent = result.message;
+        await Promise.all([loadDisputes(), loadAccounts(), loadCustomers(), loadSummary()]);
     } catch (error) {
         message.textContent = error.message;
     }
@@ -378,4 +483,4 @@ logoutButton.addEventListener('click', async () => {
 });
 
 applyTheme();
-Promise.all([loadCustomers(), loadAccounts(), loadSummary()]);
+Promise.all([loadCustomers(), loadAccounts(), loadSummary(), loadDisputes()]);

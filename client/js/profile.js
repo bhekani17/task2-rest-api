@@ -7,6 +7,8 @@ const profilePhotoInput = document.querySelector('#profilePhotoInput');
 const removeProfilePhotoButton = document.querySelector('#removeProfilePhotoButton');
 const saveProfileButton = document.querySelector('#saveProfileButton');
 const changePasswordButton = document.querySelector('#changePasswordButton');
+const activeSessionsList = document.querySelector('#activeSessionsList');
+const securityAuditLogsList = document.querySelector('#securityAuditLogsList');
 let currentUser;
 
 async function requestJson(url, options = {}) {
@@ -41,7 +43,8 @@ function renderProfile(user) {
     document.querySelector('#profileInitials').textContent = initialsFor(user.name);
     document.querySelector('#profileCustomerId').textContent = user.id ?? '—';
     document.querySelector('#profileAccountStatus').textContent = user.status;
-    document.querySelector('#profileAccountNumber').textContent = user.accountNumber || '—';
+    document.querySelector('#profileAccountNumber').textContent =
+        user.role === 'admin' ? 'Not applicable (Administrator)' : (user.accountNumber || '—');
     document.querySelector('#adminNavigationGroup').hidden = user.role !== 'admin';
     for (const link of document.querySelectorAll('.investment-nav-link')) {
         link.hidden = user.role === 'admin';
@@ -49,10 +52,84 @@ function renderProfile(user) {
     renderPhoto(user.hasProfilePhoto);
 }
 
+async function loadSessionsAndAuditLogs() {
+    try {
+        const [sessionsResult, logsResult] = await Promise.all([
+            requestJson('/api/auth/sessions'),
+            requestJson('/api/auth/audit-logs')
+        ]);
+
+        if (activeSessionsList) {
+            activeSessionsList.replaceChildren();
+            const sessions = sessionsResult.sessions || [];
+            if (!sessions.length) {
+                const empty = document.createElement('p');
+                empty.className = 'empty-state';
+                empty.textContent = 'No active sessions found.';
+                activeSessionsList.append(empty);
+            }
+            for (const session of sessions) {
+                const card = document.createElement('article');
+                card.className = 'account-card';
+                const meta = document.createElement('span');
+                meta.className = 'account-owner';
+                meta.textContent = `${session.current ? 'CURRENT SESSION' : 'ACTIVE SESSION'} · ${session.ipAddress}`;
+                const agent = document.createElement('span');
+                agent.className = 'account-number';
+                agent.textContent = `${session.userAgent.slice(0, 72)} · Signed in ${new Date(session.createdAt).toLocaleString()}`;
+                card.append(meta, agent);
+                if (!session.current) {
+                    const revokeBtn = document.createElement('button');
+                    revokeBtn.type = 'button';
+                    revokeBtn.className = 'filter-button';
+                    revokeBtn.textContent = 'Revoke session';
+                    revokeBtn.addEventListener('click', async () => {
+                        try {
+                            const res = await requestJson(`/api/auth/sessions/${session.id}`, { method: 'DELETE' });
+                            statusMessage.textContent = res.message;
+                            await loadSessionsAndAuditLogs();
+                        } catch (error) {
+                            statusMessage.textContent = error.message;
+                        }
+                    });
+                    card.append(revokeBtn);
+                }
+                activeSessionsList.append(card);
+            }
+        }
+
+        if (securityAuditLogsList) {
+            securityAuditLogsList.replaceChildren();
+            const logs = logsResult.logs || [];
+            if (!logs.length) {
+                const empty = document.createElement('p');
+                empty.className = 'empty-state';
+                empty.textContent = 'No recent security activity recorded.';
+                securityAuditLogsList.append(empty);
+            }
+            for (const entry of logs.slice(0, 10)) {
+                const card = document.createElement('article');
+                card.className = 'account-card';
+                const meta = document.createElement('span');
+                meta.className = 'account-owner';
+                meta.textContent = `${entry.action.replaceAll('_', ' ').toUpperCase()} · ${new Date(entry.createdAt).toLocaleString()}`;
+                const detail = document.createElement('span');
+                detail.className = 'account-number';
+                detail.textContent = `${entry.detail}${entry.ipAddress ? ` (${entry.ipAddress})` : ''}`;
+                card.append(meta, detail);
+                securityAuditLogsList.append(card);
+            }
+        }
+    } catch {
+        // Ignore non-fatal security log loading errors
+    }
+}
+
 async function loadProfile() {
     try {
         const result = await requestJson('/api/auth/me');
         renderProfile(result.user);
+        await loadSessionsAndAuditLogs();
     } catch (error) {
         statusMessage.textContent = error.message;
     }
@@ -157,13 +234,18 @@ removeProfilePhotoButton.addEventListener('click', async () => {
     }
 });
 
-document.querySelector('#themeToggle').addEventListener('click', (event) => {
-    const isDark = document.body.classList.toggle('dark-theme');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    event.currentTarget.textContent = isDark ? 'Light' : 'Dark';
+const themeToggle = document.querySelector('#themeToggle');
+function applyTheme() {
+    const isDark = localStorage.getItem('theme') === 'dark';
+    document.body.classList.toggle('dark-theme', isDark);
+    if (themeToggle) themeToggle.textContent = isDark ? 'Light' : 'Dark';
+}
+themeToggle?.addEventListener('click', () => {
+    const nextTheme = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
+    localStorage.setItem('theme', nextTheme);
+    applyTheme();
 });
-document.querySelector('#themeToggle').textContent =
-    localStorage.getItem('theme') === 'dark' ? 'Light' : 'Dark';
+applyTheme();
 document.querySelector('#logoutButton').addEventListener('click', async () => {
     try {
         await requestJson('/api/auth/logout', { method: 'POST' });

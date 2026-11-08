@@ -37,7 +37,7 @@ function registerAdminRoutes(app, dependencies) {
       if (search && search.trim().length > 80) {
         return res.status(400).json({ error: 'Account search must be 80 characters or fewer.' });
       }
-      if (!['all', 'active', 'pending', 'closed'].includes(status)) {
+      if (!['all', 'active', 'frozen', 'pending', 'closed'].includes(status)) {
         return res.status(400).json({ error: 'Account status filter is invalid.' });
       }
       const pageNumber = Number(page);
@@ -104,7 +104,7 @@ function registerAdminRoutes(app, dependencies) {
       let closedAccount;
       await session.withTransaction(async () => {
         closedAccount = await Account.findOneAndUpdate(
-          { accountNumber, status: { $in: ['active', 'pending'] }, balanceMinor: 0 },
+          { accountNumber, status: { $in: ['active', 'frozen', 'pending'] }, balanceMinor: 0 },
           { $set: { status: 'closed' } },
           { new: true, session }
         );
@@ -122,13 +122,19 @@ function registerAdminRoutes(app, dependencies) {
           throw error;
         }
 
-        const openAccountCount = await Account.countDocuments({
+        const openAccounts = await Account.find({
           ownerUserId: closedAccount.ownerUserId,
-          status: { $in: ['active', 'pending'] }
-        }).session(session);
+          status: { $in: ['active', 'frozen', 'pending'] }
+        }).select('accountNumber balanceMinor').sort({ createdAt: 1 }).session(session).lean();
+        const owner = await User.findById(closedAccount.ownerUserId).select('accountNumber').session(session).lean();
+        const userUpdates = { accountCount: openAccounts.length };
+        if (owner?.accountNumber === accountNumber) {
+          userUpdates.accountNumber = openAccounts[0]?.accountNumber || accountNumber;
+          userUpdates.balanceMinor = openAccounts[0]?.balanceMinor || 0;
+        }
         await User.updateOne(
           { _id: closedAccount.ownerUserId },
-          { $set: { accountCount: openAccountCount } },
+          { $set: userUpdates },
           { session }
         );
       });
@@ -208,7 +214,7 @@ function registerAdminRoutes(app, dependencies) {
       }
       const fundedAccount = await Account.exists({
         ownerUserId: user._id,
-        status: { $in: ['active', 'pending'] },
+        status: { $in: ['active', 'frozen', 'pending'] },
         balanceMinor: { $gt: 0 }
       });
       if (user.balanceMinor !== 0 || fundedAccount) {
@@ -231,7 +237,7 @@ function registerAdminRoutes(app, dependencies) {
         return res.status(404).json({ error: 'User not found.' });
       }
       await Account.updateMany(
-        { ownerUserId: account._id, status: { $in: ['active', 'pending'] } },
+        { ownerUserId: account._id, status: { $in: ['active', 'frozen', 'pending'] } },
         { $set: { status: 'closed' } }
       );
       await User.updateOne({ _id: account._id }, { $set: { accountCount: 0 } });

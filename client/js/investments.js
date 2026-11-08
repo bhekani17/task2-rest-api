@@ -182,13 +182,18 @@ stockTable.addEventListener('click', async (event) => {
     }
 });
 
-document.querySelector('#themeToggle').addEventListener('click', (event) => {
-    const isDark = document.body.classList.toggle('dark-theme');
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    event.currentTarget.textContent = isDark ? 'Light' : 'Dark';
+const themeToggle = document.querySelector('#themeToggle');
+function applyTheme() {
+    const isDark = localStorage.getItem('theme') === 'dark';
+    document.body.classList.toggle('dark-theme', isDark);
+    if (themeToggle) themeToggle.textContent = isDark ? 'Light' : 'Dark';
+}
+themeToggle?.addEventListener('click', () => {
+    const nextTheme = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
+    localStorage.setItem('theme', nextTheme);
+    applyTheme();
 });
-document.querySelector('#themeToggle').textContent =
-    localStorage.getItem('theme') === 'dark' ? 'Light' : 'Dark';
+applyTheme();
 document.querySelector('#logoutButton').addEventListener('click', async () => {
     try {
         await requestJson('/api/auth/logout', { method: 'POST' });

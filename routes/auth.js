@@ -4,12 +4,23 @@ const { detectProfilePhotoType } = require('../lib/profile-photo');
 
 function registerAuthRoutes(app, dependencies) {
   const {
-    requireAuth, requireAdmin, User, Account, Session, Activation,
+    requireAuth, requireAdmin, User, Account, Session, Activation, AuditLog,
     incrementAuthAttempts, clearAuthAttempts, nextUserId, nextAccountNumber,
     currentMonthKey, hashToken, readCookie, clearSessionCookie, setSessionCookie,
     publicUser, reportServerError, hashPassword, verifyPassword, needsPasswordRehash,
     mongoose, LOGIN_ATTEMPT_WINDOW_MS, SESSION_COOKIE
   } = dependencies;
+
+  async function recordAuditLog(userId, action, detail, req) {
+    if (!AuditLog?.create || !userId) return;
+    try {
+      const ipAddress = typeof req?.ip === 'string' ? req.ip.slice(0, 80) : '';
+      const userAgent = typeof req?.get === 'function' ? String(req.get('user-agent') || '').slice(0, 180) : '';
+      await AuditLog.create({ userId, action, detail, ipAddress, userAgent });
+    } catch {
+      // Do not fail the user request if optional audit log write fails.
+    }
+  }
 
   // Administrative customer creation is kept separate from self-service registration.
   app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
@@ -76,19 +87,42 @@ function registerAuthRoutes(app, dependencies) {
     }
   });
   
+  function verifyAdminRegistrationCode(submittedCode) {
+    const configuredCode = process.env.ADMIN_REGISTRATION_CODE;
+    if (typeof configuredCode !== 'string' || !configuredCode.trim()) {
+      return { allowed: false, status: 403, error: 'Administrator registration is not enabled.' };
+    }
+    const submittedDigest = crypto.createHash('sha256').update(submittedCode.trim(), 'utf8').digest();
+    const configuredDigest = crypto.createHash('sha256').update(configuredCode.trim(), 'utf8').digest();
+    if (!crypto.timingSafeEqual(submittedDigest, configuredDigest)) {
+      return { allowed: false, status: 403, error: 'Invalid administrator registration code.' };
+    }
+    return { allowed: true };
+  }
+
   // POST /api/auth/register creates a password-based account for the application.
   app.post('/api/auth/register', async (req, res) => {
+    let session;
     try {
-      const { name, email, password } = req.body || {};
+      const { name, email, password, adminCode } = req.body || {};
       if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 ||
           typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
-          typeof password !== 'string' || password.length < 12 || password.length > 128) {
+          typeof password !== 'string' || password.length < 12 || password.length > 128 ||
+          (adminCode !== undefined && (typeof adminCode !== 'string' || adminCode.length > 128))) {
         return res.status(400).json({ error: 'Provide a valid name, email, and a 12-128 character password.' });
       }
       const attempt = await incrementAuthAttempts(req, 'register');
       if (attempt.count > 3) {
         res.setHeader('Retry-After', String(LOGIN_ATTEMPT_WINDOW_MS / 1000));
         return res.status(429).json({ error: 'Too many registration attempts. Try again in 15 minutes.' });
+      }
+
+      const isAdminRegistration = typeof adminCode === 'string' && adminCode.trim().length > 0;
+      if (isAdminRegistration) {
+        const verification = verifyAdminRegistrationCode(adminCode);
+        if (!verification.allowed) {
+          return res.status(verification.status).json({ error: verification.error });
+        }
       }
   
       const normalizedEmail = String(email).trim().toLowerCase();
@@ -98,28 +132,52 @@ function registerAuthRoutes(app, dependencies) {
       }
   
       const userId = await nextUserId();
-      const accountNumber = await nextAccountNumber();
-      const newUser = new User({
-        userId,
-        accountNumber,
-        accountCount: 1,
-        balanceMinor: 0,
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash: await hashPassword(password)
-      });
-      await newUser.save();
-      await Account.create({
-        ownerUserId: newUser._id,
-        accountNumber,
-        accountType: 'cheque',
-        balanceMinor: 0,
-        lastInterestCreditedMonth: currentMonthKey()
-      });
-      await setSessionCookie(newUser, res);
+      const passwordHash = await hashPassword(password);
+      let newUser;
+
+      if (isAdminRegistration) {
+        [newUser] = await User.create([{
+          userId,
+          role: 'admin',
+          accountCount: 0,
+          balanceMinor: 0,
+          name: name.trim(),
+          email: normalizedEmail,
+          passwordHash
+        }]);
+      } else {
+        const accountNumber = await nextAccountNumber();
+        session = await mongoose.startSession();
+        await session.withTransaction(async () => {
+          [newUser] = await User.create([{
+            userId,
+            role: 'customer',
+            accountNumber,
+            accountCount: 1,
+            balanceMinor: 0,
+            name: name.trim(),
+            email: normalizedEmail,
+            passwordHash
+          }], { session });
+          await Account.create([{
+            ownerUserId: newUser._id,
+            accountNumber,
+            accountType: 'cheque',
+            balanceMinor: 0,
+            lastInterestCreditedMonth: currentMonthKey()
+          }], { session });
+        });
+      }
+      await setSessionCookie(newUser, res, req);
+      await recordAuditLog(
+        newUser._id,
+        'account_registered',
+        isAdminRegistration ? 'Administrator profile registered.' : 'Customer profile and primary account registered.',
+        req
+      );
   
       res.status(201).json({
-        message: 'Registration successful.',
+        message: isAdminRegistration ? 'Administrator registration successful.' : 'Registration successful.',
         user: publicUser(newUser)
       });
     } catch (error) {
@@ -132,7 +190,14 @@ function registerAuthRoutes(app, dependencies) {
       if (error.code === 'ACCOUNT_NUMBERS_EXHAUSTED') {
         return res.status(503).json({ error: error.message });
       }
+      if (error.code === 20 || /transaction numbers are only allowed/i.test(String(error?.message || ''))) {
+        return res.status(503).json({
+          error: 'Account registration requires MongoDB running as a replica set.'
+        });
+      }
       reportServerError(res, 'Registration', error);
+    } finally {
+      if (session) await session.endSession();
     }
   });
   
@@ -163,7 +228,8 @@ function registerAuthRoutes(app, dependencies) {
       }
   
       await clearAuthAttempts(req, 'login');
-      await setSessionCookie(user, res);
+      await setSessionCookie(user, res, req);
+      await recordAuditLog(user._id, 'login_success', 'Signed in to Sky Bank.', req);
       res.status(200).json({
         message: 'Login successful.',
         user: publicUser(user)
@@ -300,6 +366,12 @@ function registerAuthRoutes(app, dependencies) {
         return res.status(409).json({ error: 'Your profile changed or became unavailable. Reload and try again.' });
       }
       const updatedUser = await User.findById(currentUser._id);
+      await recordAuditLog(
+        currentUser._id,
+        'profile_updated',
+        `Updated profile fields: ${Object.keys(updates).join(', ')}.`,
+        req
+      );
       res.status(200).json({ message: 'Profile updated.', user: publicUser(updatedUser) });
     } catch (error) {
       if (error.code === 11000) {
@@ -354,6 +426,12 @@ function registerAuthRoutes(app, dependencies) {
           { session }
         );
       });
+      await recordAuditLog(
+        req.authUser._id,
+        'password_changed',
+        'Changed password and revoked other active sessions.',
+        req
+      );
       res.status(200).json({
         message: 'Password changed. Other active sessions have been signed out.'
       });
@@ -441,6 +519,77 @@ function registerAuthRoutes(app, dependencies) {
       demoDepositsEnabled: process.env.NODE_ENV !== 'production',
       savingsInterestEnabled: process.env.NODE_ENV !== 'production'
     });
+  });
+
+  app.get('/api/auth/sessions', requireAuth, async (req, res) => {
+    try {
+      const token = readCookie(req, SESSION_COOKIE);
+      const currentTokenHash = token ? hashToken(token) : null;
+      const sessions = await Session.find({
+        userId: req.authUser._id,
+        expiresAt: { $gt: new Date() }
+      }).sort({ createdAt: -1 }).limit(20).lean();
+
+      res.status(200).json({
+        sessions: sessions.map((session) => ({
+          id: String(session._id),
+          ipAddress: session.ipAddress || 'Unknown IP',
+          userAgent: session.userAgent || 'Browser session',
+          createdAt: session.createdAt,
+          expiresAt: session.expiresAt,
+          current: Boolean(currentTokenHash && session.tokenHash === currentTokenHash)
+        }))
+      });
+    } catch (error) {
+      reportServerError(res, 'Session listing', error);
+    }
+  });
+
+  app.delete('/api/auth/sessions/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    if (typeof id !== 'string' || !/^[a-fA-F0-9]{24}$/.test(id)) {
+      return res.status(400).json({ error: 'Invalid session ID.' });
+    }
+    try {
+      const token = readCookie(req, SESSION_COOKIE);
+      const currentTokenHash = token ? hashToken(token) : null;
+      const session = await Session.findOne({ _id: id, userId: req.authUser._id }).lean();
+      if (!session) {
+        return res.status(404).json({ error: 'Active session not found.' });
+      }
+      if (currentTokenHash && session.tokenHash === currentTokenHash) {
+        return res.status(400).json({ error: 'Use Sign Out to end your current session.' });
+      }
+      await Session.deleteOne({ _id: session._id, userId: req.authUser._id });
+      await recordAuditLog(req.authUser._id, 'session_revoked', `Revoked active session (${session.ipAddress || 'device'}).`, req);
+      res.status(200).json({ message: 'Session revoked.' });
+    } catch (error) {
+      reportServerError(res, 'Session revocation', error);
+    }
+  });
+
+  app.get('/api/auth/audit-logs', requireAuth, async (req, res) => {
+    try {
+      if (!AuditLog?.find) {
+        return res.status(200).json({ logs: [] });
+      }
+      const logs = await AuditLog.find({ userId: req.authUser._id })
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .lean();
+      res.status(200).json({
+        logs: logs.map((entry) => ({
+          id: String(entry._id),
+          action: entry.action,
+          detail: entry.detail,
+          ipAddress: entry.ipAddress || '',
+          userAgent: entry.userAgent || '',
+          createdAt: entry.createdAt
+        }))
+      });
+    } catch (error) {
+      reportServerError(res, 'Audit log listing', error);
+    }
   });
   
   app.use('/api', requireAuth);

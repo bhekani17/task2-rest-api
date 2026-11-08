@@ -102,6 +102,16 @@
                         <button id="changePasswordButton" class="primary-btn" type="submit">Update password</button>
                     </form>
                 </section>
+                <section class="panel-card profile-card" aria-labelledby="sessionsHeading">
+                    <h2 id="sessionsHeading">Active sessions</h2>
+                    <p class="panel-description">Review signed-in devices and revoke any unfamiliar sessions.</p>
+                    <div id="activeSessionsList" class="account-list"></div>
+                </section>
+                <section class="panel-card profile-card" aria-labelledby="auditLogHeading">
+                    <h2 id="auditLogHeading">Security activity log</h2>
+                    <p class="panel-description">Recent sign-ins, profile updates, and security events.</p>
+                    <div id="securityAuditLogsList" class="account-list"></div>
+                </section>
             </div>
         </main>
     </div>

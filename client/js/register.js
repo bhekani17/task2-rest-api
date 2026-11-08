@@ -18,10 +18,12 @@ const form = document.querySelector('#registerForm');
             event.preventDefault();
             message.textContent = 'Creating account...';
 
+            const adminCode = document.querySelector('#adminCode')?.value.trim() || '';
             const payload = {
                 name: document.querySelector('#name').value.trim(),
                 email: document.querySelector('#email').value.trim(),
-                password: document.querySelector('#password').value
+                password: document.querySelector('#password').value,
+                ...(adminCode ? { adminCode } : {})
             };
 
             try {
@@ -38,7 +40,7 @@ const form = document.querySelector('#registerForm');
                 }
 
                 message.textContent = `Welcome ${result.user.name}! Your account is ready.`;
-                window.location.replace('/dashboard');
+                window.location.replace(result.user.role === 'admin' ? '/admin' : '/dashboard');
             } catch (error) {
                 message.textContent = error.message;
             }

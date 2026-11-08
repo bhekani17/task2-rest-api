@@ -61,8 +61,8 @@ function registerAccountRoutes(app, dependencies) {
   app.get('/api/accounts', async (req, res) => {
     try {
       const filter = req.authUser.role === 'admin'
-        ? { status: 'active' }
-        : { ownerUserId: req.authUser._id, status: 'active' };
+        ? { status: { $in: ['active', 'frozen'] } }
+        : { ownerUserId: req.authUser._id, status: { $in: ['active', 'frozen'] } };
       const accounts = await Account.find(filter)
         .populate('ownerUserId', 'name email')
         .sort({ createdAt: -1 })
@@ -70,7 +70,7 @@ function registerAccountRoutes(app, dependencies) {
       const totalBalanceMinor = accounts.reduce((total, account) => total + account.balanceMinor, 0);
       const ownedAccountCount = await Account.countDocuments({
         ownerUserId: req.authUser._id,
-        status: 'active'
+        status: { $in: ['active', 'frozen'] }
       });
   
       res.status(200).json({
@@ -84,6 +84,7 @@ function registerAccountRoutes(app, dependencies) {
           email: account.ownerUserId.email,
           accountNumber: account.accountNumber,
           accountType: account.accountType,
+          status: account.status || 'active',
           balance: account.balanceMinor / 100,
           currency: 'ZAR'
         }))
@@ -94,6 +95,9 @@ function registerAccountRoutes(app, dependencies) {
   });
   
   app.post('/api/accounts', async (req, res) => {
+    if (req.authUser.role === 'admin') {
+      return res.status(403).json({ error: 'Administrators cannot hold or open personal bank accounts.' });
+    }
     const { accountType } = req.body || {};
     if (!['cheque', 'savings'].includes(accountType)) {
       return res.status(400).json({ error: 'Choose a cheque/current or savings account.' });

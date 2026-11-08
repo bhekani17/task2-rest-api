@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/images/bg.png">
     <link rel="stylesheet" href="/css/dashboard.css">
 </head>
-<body>
+<body class="dashboard-page">
     <div class="page-shell">
         <aside class="sidebar">
             <div class="brand">
@@ -72,6 +72,55 @@
                 <p id="accountLimitMessage" class="filter-status"></p>
                 <p id="accountCreationStatus" class="filter-status" role="status" aria-live="polite"></p>
             </section>
+
+            <div class="transfer-page-grid">
+                <section id="virtualCardsSection" class="panel-card single-panel" aria-labelledby="virtualCardsHeading">
+                    <div class="dashboard-header">
+                        <div>
+                            <h2 id="virtualCardsHeading">Virtual debit cards</h2>
+                            <p class="panel-description">Issue virtual cards with instant freeze, online payment controls, and daily spend limits.</p>
+                        </div>
+                    </div>
+                    <form id="issueCardForm" class="transaction-form">
+                        <label for="cardAccountNumber">Linked account
+                            <select id="cardAccountNumber" name="accountNumber" required>
+                                <option value="">Loading accounts...</option>
+                            </select>
+                        </label>
+                        <label for="cardDailyLimit">Daily spend limit (ZAR)
+                            <input id="cardDailyLimit" name="dailyLimit" type="number" min="100" max="500000" step="100" value="25000" required>
+                        </label>
+                        <button type="submit">Issue virtual card</button>
+                    </form>
+                    <p id="virtualCardStatus" class="filter-status" role="status" aria-live="polite"></p>
+                    <div id="virtualCardsList" class="account-list"></div>
+                </section>
+
+                <section id="savingsGoalsSection" class="panel-card single-panel" aria-labelledby="savingsGoalsHeading">
+                    <div class="dashboard-header">
+                        <div>
+                            <h2 id="savingsGoalsHeading">Savings goals &amp; pockets</h2>
+                            <p class="panel-description">Set aside funds from your account toward dedicated targets.</p>
+                        </div>
+                    </div>
+                    <form id="createSavingsGoalForm" class="transaction-form">
+                        <label for="goalAccountNumber">Linked account
+                            <select id="goalAccountNumber" name="accountNumber" required>
+                                <option value="">Loading accounts...</option>
+                            </select>
+                        </label>
+                        <label for="goalName">Goal name
+                            <input id="goalName" name="name" type="text" maxlength="60" placeholder="e.g. Emergency fund" required>
+                        </label>
+                        <label for="goalTargetAmount">Target amount (ZAR)
+                            <input id="goalTargetAmount" name="targetAmount" type="number" min="1" max="999999999" step="0.01" placeholder="5000.00" required>
+                        </label>
+                        <button type="submit">Create savings goal</button>
+                    </form>
+                    <p id="savingsGoalStatus" class="filter-status" role="status" aria-live="polite"></p>
+                    <div id="savingsGoalsList" class="account-list"></div>
+                </section>
+            </div>
         </main>
     </div>
     <script src="/socket.io/socket.io.js"></script>

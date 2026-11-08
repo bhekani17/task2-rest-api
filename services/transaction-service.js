@@ -45,7 +45,7 @@ function buildTransactionFilter(query, user, allowedAccountNumbers = [user.accou
   if (from && to && from > to) {
     return { error: { status: 400, message: 'The start date must be on or before the end date.' } };
   }
-  if (query.type && !['transfer', 'deposit', 'withdrawal', 'interest', 'stock_buy', 'stock_sell'].includes(query.type)) {
+  if (query.type && !['transfer', 'deposit', 'withdrawal', 'interest', 'stock_buy', 'stock_sell', 'reversal', 'goal_allocate', 'goal_release'].includes(query.type)) {
     return { error: { status: 400, message: 'Transaction type filter is invalid.' } };
   }
   if (query.accountNumber && !/^\d{10}$/.test(query.accountNumber)) {

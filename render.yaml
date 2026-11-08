@@ -9,5 +9,9 @@ services:
         value: production
       - key: MONGODB_URI
         sync: false
+      - key: ADMIN_REGISTRATION_CODE
+        sync: false
+      - key: MANSA_API_KEY
+        sync: false
       - key: JWT_SECRET
         generateValue: true
